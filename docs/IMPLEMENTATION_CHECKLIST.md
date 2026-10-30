@@ -85,8 +85,25 @@ v0.4 versions + real migration -> v1.0 distribution. Evidence for every [x] is i
 - [x] Performance: bounded concurrent prefetch + batch lookups; per-phase timings in plans
 - [ ] NeoForge 1.20.1 and Quilt templates (listed as not verified)
 
-## v1.0: distribution
-- [ ] Licensing recommendation, reproducible packaging, `doctor` expansion, docs, release validation
+## v1.0: distribution (state: 1.0.0rc1, release candidate)
+- [x] Licensing recommendation + third-party audit (`docs/licensing.md`); template notices shipped and
+      copied into generated projects
+- [!] License choice and repository visibility: awaiting the owner (repo is public, metadata says
+      "Proprietary - internal use only"; nothing was changed)
+- [x] Reproducible wheel + sdist (pinned hatchling, `SOURCE_DATE_EPOCH`, byte-identical double build),
+      SHA256SUMS, skills/templates/registry as package data, `uv.lock`
+- [x] Install from wheel, local path and `git+` URL (local `git+file://` tested; the GitHub URL needs
+      repository access); uninstall; upgrade via `--reinstall`
+- [ ] `uv tool install minecraft-agent-toolkit` from PyPI: not published (needs the owner)
+- [x] `mcat doctor` (Python, JDKs per game line, Gradle, packwiz, git, uv, keyring, CurseForge key,
+      Modrinth/CurseForge reachability, skill packaging and discovery, writable dirs, sandbox, display);
+      read-only
+- [x] README rewrite; CONTRIBUTING, SECURITY, versioning policy, PR/issue templates (private development)
+- [x] Release validation: `scripts/release_check.py` (22 checks) + `.github/workflows/release.yml`
+      (least privilege, no publishing, opt-in network job in the `providers` environment); actionlint-clean
+- [~] Release workflow run on GitHub: not run (push not authorised); replayed locally
+- [x] 14-step clean-environment UAT (`scripts/uat.py`), results in verification.md
+- [ ] Final 1.0.0: withheld; see docs/versioning.md criteria and the open items above
 
 ## v0.1 milestones (M1-M4)
 

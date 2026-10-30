@@ -42,7 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(handler=handler)
         return p
 
-    cmd(sub, "doctor", core.doctor, "check Python, Java, Gradle, packwiz, keyring and skill sources")
+    p = cmd(sub, "doctor", core.doctor, "diagnose Python, Java, Gradle, packwiz, keyring, providers, skills, sandbox")
+    p.add_argument("--offline", action="store_true", help="skip Modrinth/CurseForge connectivity checks")
+    p.add_argument("--project", help="project directory for project-scope skill checks (default: cwd)")
 
     p = cmd(sub, "inspect", core.inspect, "read-only analysis of a pack archive or directory (no downloads)")
     p.add_argument("path", help=".mrpack, CurseForge .zip, packwiz directory, or instance directory")

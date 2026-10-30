@@ -100,6 +100,18 @@ GitHub Actions layout:
   kept outside the repository (`benchmarks/inputs/` is git-ignored).
 - Offline tests cannot reach the network (autouse guard), so they cannot leak credentials either.
 
+## Release artifacts (v1.0 RC)
+
+- `scripts/release_check.py` rejects a build that contains jars, archives, class files, native
+  binaries or `.pyc`, any file over 1 MB, or a token-shaped string (CurseForge `$2a$`, `mrp_`, GitHub,
+  AWS, `sk-`, private keys). Both the wheel and the sdist are scanned.
+- Generated projects carry `THIRD_PARTY_NOTICES.md` for the upstream template code (CC0, MIT, LGPL);
+  no third-party mod jars are shipped.
+- `release.yml` has `contents: read` only, holds no publishing credentials, and runs the live provider
+  job only on manual dispatch inside the `providers` environment, never for pull requests.
+- `mcat doctor` only reports: it never installs packages, edits settings or reads secret values (it
+  reports whether a CurseForge key exists, not the key).
+
 ## Known gaps
 
 - Mod JARs are not scanned for malware (only metadata is read). Run unknown jars only in a sandbox.

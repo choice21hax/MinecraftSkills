@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import getpass
-import os
 import shutil
 import subprocess
 import sys
@@ -12,7 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from mcat import __version__, agentskills
+from mcat import agentskills
 from mcat.parsers.inventory import build_inventory
 from mcat.parsers.packs import PackFormatError, parse_pack
 from mcat.parsers.source import PackSource
@@ -37,64 +36,9 @@ def _tool_version(cmd: list[str]) -> str | None:
 
 
 def doctor(args: argparse.Namespace) -> Result:
-    r = Result("doctor", summary=f"mcat {__version__}")
-    py = sys.version_info
-    r.data["python"] = f"{py.major}.{py.minor}.{py.micro}"
-    if py < (3, 12):
-        r.fail("Python 3.12+ required")
-    tools = {
-        "java": _tool_version(["java", "-version"]),
-        "gradle": _tool_version(["gradle", "--version", "--quiet"]) if shutil.which("gradle") else None,
-        "packwiz": shutil.which("packwiz") and "present",
-        "git": _tool_version(["git", "--version"]),
-        "uv": _tool_version(["uv", "--version"]),
-    }
-    r.data["tools"] = tools
-    if not tools["java"]:
-        r.add(
-            Finding(
-                "java-missing",
-                "No java on PATH; mod builds are unavailable",
-                Severity.WARNING,
-                fix="Install a JDK matching the target game (e.g. Temurin 25 for Minecraft 26.x)",
-            )
-        )
-    if not tools["packwiz"]:
-        r.add(
-            Finding(
-                "packwiz-missing",
-                "packwiz not found; MCAT writes packwiz-format files natively and skips `packwiz refresh` verification",
-                Severity.INFO,
-                fix="Optional: go install github.com/packwiz/packwiz@latest",
-            )
-        )
-    st = cred.backend_status()
-    r.data["keyring"] = asdict(st)
-    r.data["dbus_session"] = bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS"))
-    if not st.secure:
-        r.add(
-            Finding(
-                "keyring-insecure",
-                f"No secure keyring backend: {st.detail}",
-                Severity.WARNING,
-                fix=cred.LINUX_SETUP_GUIDE
-                if sys.platform.startswith("linux")
-                else "Install/enable the native OS credential store",
-            )
-        )
-        r.degrade()
-    r.data["credentials"] = cred.credential_status()
-    try:
-        root = agentskills.canonical_root()
-        problems = [p for n in agentskills.SKILL_NAMES for p in agentskills.validate_skill(root / n)]
-        r.data["skills_source"] = str(root)
-        for p in problems:
-            r.add(Finding("skill-invalid", p, Severity.ERROR))
-        if problems:
-            r.degrade()
-    except agentskills.SkillInstallError as e:
-        r.fail(str(e))
-    return r
+    from mcat.doctor import run_doctor
+
+    return run_doctor(offline=args.offline, project=Path(args.project) if args.project else None)
 
 
 def inspect(args: argparse.Namespace) -> Result:

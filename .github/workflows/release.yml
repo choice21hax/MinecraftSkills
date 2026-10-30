@@ -1,0 +1,95 @@
+# Release validation: builds a release candidate and proves it, but publishes nothing.
+# - Triggers: manual dispatch, or a pushed v* tag (tags are created only by maintainers).
+# - Least privilege: contents: read. No PyPI token, no GitHub Release, no package registry access.
+# - Network checks are opt-in (input `network`) and use the `providers` environment, which can require
+#   reviewer approval; they never run for pull requests.
+# - Third-party actions are pinned to full commit SHAs (tag in the trailing comment).
+name: release-validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: "also run the live provider suite (uses the providers environment)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.13.5"
+  PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
+
+jobs:
+  validate:
+    name: offline suite + release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # SOURCE_DATE_EPOCH comes from the last commit
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked
+      - name: Formatting and static analysis
+        run: |
+          uv run ruff check src tests scripts
+          uv run ruff format --check src tests scripts
+          uv run mypy
+      - name: Offline test suite
+        run: uv run pytest
+        env:
+          MCAT_CACHE_DIR: ${{ runner.temp }}/mcat-cache
+      - name: Validate skills
+        run: uv run mcat skills validate --json
+      - name: Tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(uv run python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          test "v${version}" = "${TAG}" || { echo "tag ${TAG} != version ${version}"; exit 1; }
+      - name: Build twice, checksum, inspect, clean install, examples, report
+        run: uv run python scripts/release_check.py "${{ runner.temp }}/release"
+      - name: Upload release candidate (workflow artifact only, not a GitHub Release)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}/release/dist/
+          retention-days: 14
+
+  network:
+    name: live provider suite (opt-in)
+    if: github.event_name == 'workflow_dispatch' && inputs.network
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: providers
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run pytest -m network
+        env:
+          MCAT_ALLOW_ENV_CREDENTIALS: "1"
+          MCAT_CURSEFORGE_API_KEY: ${{ secrets.MCAT_CURSEFORGE_API_KEY }}
+          MCAT_CACHE_DIR: ${{ runner.temp }}/mcat-cache

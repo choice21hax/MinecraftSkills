@@ -13,7 +13,7 @@ from mcat.migration.plan import build_plan
 from mcat.models import LOADERS
 from mcat.parsers.packs import PackFormatError
 from mcat.providers.curseforge import CurseForgeProvider, CurseForgeUnavailable
-from mcat.providers.http import NetworkError
+from mcat.providers.http import NetworkError, OfflineError
 from mcat.providers.modrinth import ModrinthProvider
 from mcat.reporting import Finding, Result, Severity, Status, VerificationState
 from mcat.security.archive import UnsafeArchiveError
@@ -50,6 +50,9 @@ def migrate_plan(args: argparse.Namespace) -> Result:
         )
     except (FileNotFoundError, PackFormatError, UnsafeArchiveError, ValueError) as e:
         r.fail(f"cannot read source pack: {e}")
+        return r
+    except OfflineError as e:
+        r.block(f"offline and not cached: {e} (planning needs provider data once; unset MCAT_OFFLINE)")
         return r
     except NetworkError as e:
         r.fail(f"provider error: {e}")

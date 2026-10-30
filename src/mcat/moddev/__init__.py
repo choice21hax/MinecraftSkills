@@ -285,6 +285,10 @@ def write_project(plan: ScaffoldPlan, out: Path, *, examples: bool = False) -> l
     }
     (out / PROJECT_META).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
     written.append(out / PROJECT_META)
+    notices = templates_root() / "THIRD_PARTY_NOTICES.md"  # upstream template licenses travel with the code
+    if notices.is_file():
+        (out / "THIRD_PARTY_NOTICES.md").write_text(notices.read_text(encoding="utf-8"), encoding="utf-8")
+        written.append(out / "THIRD_PARTY_NOTICES.md")
     return written
 
 

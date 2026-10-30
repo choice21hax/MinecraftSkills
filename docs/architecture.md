@@ -27,9 +27,12 @@ Layer B: src/mcat  (deterministic engine)
   debug/        analyze.py: rule-based log analysis, repairs (quarantine)
   security/     archive.py · credentials.py (keyring) · redact.py
   agentskills.py  installer/validator for the skills
+  doctor.py     read-only environment diagnostics (`mcat doctor`)
 Layer C: existing tools
   Modrinth API · CurseForge API · Gradle + Loom / ModDevGradle / ForgeGradle · packwiz (oracle in CI/network tests)
 CI: .github/workflows/ci.yml (offline, every PR) · network.yml (live providers, manual/scheduled)
+    release.yml (release candidate validation; manual or v* tag; publishes nothing)
+Release tooling: scripts/release_check.py (reproducible build, scans, clean install) · scripts/uat.py
 ```
 
 ## Data flow

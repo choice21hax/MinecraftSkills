@@ -2,6 +2,29 @@
 
 Versions follow semver; nothing is published to a registry. See docs/verification.md for evidence.
 
+## 1.0.0rc1 (2026-10-30, release candidate, not published)
+
+- `mcat doctor` rebuilt (`mcat/doctor.py`): Python, every JDK found (PATH, JAVA_HOME, JVM dirs) and which
+  game lines it covers, Gradle, packwiz, git, uv, credential backend, CurseForge key presence, Modrinth
+  and CurseForge connectivity (skippable with `--offline`), packaged skills and their discovery for
+  Claude Code and Codex, writable cache/workspace, container sandbox (rootless or not), virtual display.
+  Read-only: it never installs or changes anything.
+- Reproducible packaging: build backend pinned (hatchling 1.33.0); `scripts/release_check.py` builds
+  twice with `SOURCE_DATE_EPOCH` and requires identical bytes, writes `SHA256SUMS`, checks metadata,
+  scans artifacts (no jars/archives/binaries, no token-shaped strings, size limits), installs the wheel
+  in a clean venv, runs the smoke test and offline examples, and writes `release-report.json`.
+- `.github/workflows/release.yml`: release validation on manual dispatch or `v*` tags; least privilege;
+  uploads the candidate as a workflow artifact; publishes nothing; live provider suite only on request
+  through the `providers` environment.
+- `scripts/uat.py`: the 14-step clean-environment acceptance test (fresh HOME, `uv tool install` of the
+  wheel, no keyring); build and server steps run only with `--build` / `--accept-eula`.
+- Licensing: `docs/licensing.md` (MIT vs Apache-2.0 vs proprietary, third-party audit); template
+  attribution in `templates/THIRD_PARTY_NOTICES.md`, copied into generated projects. **No license was
+  changed**: the decision is the owner's.
+- Docs: README rewritten (feature matrix, install, agent setup, workflows with expected results,
+  security, troubleshooting, limitations); CONTRIBUTING, SECURITY, versioning policy, PR/issue templates.
+- `migrate plan` offline without cached data is now `blocked` (exit 4) instead of `failed`.
+
 ## 0.4.0 (2026-10-30, internal)
 
 - Version-aware templates: Fabric 1.20.1/1.21.1 (fabric-loom-remap, Mojang mappings), NeoForge 1.21.1

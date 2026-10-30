@@ -6,6 +6,47 @@ Environment (2026-10-30): Arch Linux (CachyOS kernel 7.3), Hyprland, uv 0.13.5, 
 3.13.16 / 3.14.8, Temurin JDK 25.0.4.1, Gradle 9.8.1, GNOME Keyring (Secret Service) holding a
 CurseForge API key, Go 1.27.1, Docker 29.9.2 (rootful daemon). No Modrinth token. No podman, no Xvfb.
 
+## v1.0.0rc1 (release candidate)
+
+Same machine and tools as v0.4.0. Nothing was pushed or published.
+
+| What | Outcome |
+| --- | --- |
+| Offline suite | 190 passed, 27 deselected (network/build/runtime markers) |
+| ruff check, ruff format --check, mypy (52 files) | clean |
+| `mcat skills validate` | success (4 skills) |
+| actionlint 1.7.12 on ci.yml, network.yml, release.yml | clean |
+| `scripts/release_check.py` | 22/22: two builds with `SOURCE_DATE_EPOCH` byte-identical (wheel + sdist), SHA256SUMS, version/`__version__`/Requires-Dist match, no jars/archives/binaries/>1 MB/token-shaped strings in either artifact, skills + templates + registry + notices in the wheel, clean-venv install, installed smoke test, `doctor --offline` reports every check, `mod matrix` 8 executed, inspect + validate (exit 3) of a corpus pack, offline `migrate plan` blocked (exit 4), uninstall |
+| `uv tool install <checkout>` (isolated HOME/tool dir) | `mcat 1.0.0rc1`; uninstall removes the executable |
+| `uv tool install git+file://<repo>` | installs the last commit (0.4.0 at the time), proving the git path; the GitHub URL itself was not tested (needs repository access from the installing machine) |
+| GitHub run of release.yml / ci.yml | **not run**: pushing was not authorised |
+
+### Clean-environment UAT (`scripts/uat.py --build --accept-eula --codex`)
+
+Fresh HOME/XDG dirs, `uv tool install` of the rc1 wheel into an isolated tool dir, keyring disabled,
+no hosted backend. EULA accepted by the user for local offline test servers.
+
+| # | Step | Result |
+| --- | --- | --- |
+| 1 | install from the built wheel | passed: `mcat 1.0.0rc1` |
+| 2 | install Claude Code + Codex skills | passed: 8 SKILL.md reachable |
+| 3 | verify discovery | passed: 8 healthy entries; `codex debug prompt-input` lists 4/4 |
+| 4 | search Modrinth | passed: 10 hits (sodium first) |
+| 5 | CurseForge (optional) | passed as the no-key path: `auth test` blocked (exit 4); key entry is interactive and was not automated |
+| 6 | create a minimal Fabric 1.21.1 pack | passed: lock fabric-api, lithium, modmenu, placeholder-api (dependency pulled in) |
+| 7 | export `.mrpack` and re-read | passed |
+| 8 | validate `--online` | passed: success |
+| 9 | scaffold Forge 1.20.1 mod | passed: partial (exit 3), as designed until built |
+| 10 | compile (sandboxed Gradle) | passed |
+| 11 | runtime test on Forge 1.20.1 (47.4.28) server | passed with `mod-loaded` evidence, clean stop |
+| 12 | broken pack (fabric-api removed) | passed: exit 1 with `lock-entry-missing`, `packwiz-missing-file` (now both required) |
+| 13 | migration plan Fabric -> NeoForge 1.21.1 | passed: blocked (exit 4), 3 blocked, 1 proposed |
+| 14 | interpret incomplete report | passed: complete=false, one reason per blocked mod, `apply` exit 4 |
+
+Not covered by the UAT: a full agent conversation (model usage limits; discovery only), client launch,
+rootless Podman, CurseForge with a key in the clean environment (live-tested separately in v0.2-v0.4).
+The step-12 check was tightened after this run to the codes it produced; the run satisfies it.
+
 ## v0.4.0
 
 | What | Outcome |
