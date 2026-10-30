@@ -1,0 +1,47 @@
+# Live provider / toolchain tests. Never triggered by pull_request: it runs only on the default branch
+# (schedule) or when a maintainer starts it manually, so untrusted PR code cannot reach the secret.
+# The CurseForge key comes from the `providers` environment (configure required reviewers there);
+# without it the CurseForge tests skip.
+name: network
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"  # weekly, Monday 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: network
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: providers
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: "0.13.5"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      - name: Build packwiz from source (interoperability oracle)
+        run: GOBIN="$RUNNER_TEMP/bin" go install github.com/packwiz/packwiz@latest && echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: uv sync --locked
+      - name: Network tests
+        env:
+          MCAT_ALLOW_ENV_CREDENTIALS: "1"
+          MCAT_CURSEFORGE_API_KEY: ${{ secrets.MCAT_CURSEFORGE_API_KEY }}
+          PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring
+          MCAT_CACHE_DIR: ${{ runner.temp }}/mcat-cache
+        run: uv run pytest -m network -p no:cacheprovider

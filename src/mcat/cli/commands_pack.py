@@ -17,7 +17,7 @@ from mcat.pack.build import (
 )
 from mcat.providers.curseforge import CurseForgeUnavailable
 from mcat.providers.http import NetworkError
-from mcat.reporting import Finding, Result, Severity, VerificationState
+from mcat.reporting import Evidence, Finding, Result, Severity, VerificationState
 from mcat.resolver.spec import SpecError, load_spec
 from mcat.security.archive import UnsafeArchiveError
 from mcat.validation.validate import validate_path
@@ -46,6 +46,28 @@ def _resolve(spec_path: Path, r: Result) -> tuple[Any, dict[str, Any]] | None:
         {k: m[k] for k in ("slug", "provider", "version_number", "version_id", "side", "reasons")} for m in lock["mods"]
     ]
     r.data["cycles"] = lock["graph"]["cycles"]
+    r.data["restrictions"] = lock["restrictions"]
+    r.data["provider_identity"] = lock["provider_identity"]
+    for m in lock["restrictions"]:
+        r.add(
+            Finding(
+                "manual-download",
+                f"{m['key']} ({m['file']}): {m['reason']}; users must download it through CurseForge",
+                Severity.WARNING,
+                subject=m["key"],
+            )
+        )
+    for d in lock["provider_identity"]["merged"]:
+        r.add(
+            Finding(
+                "provider-duplicate-merged",
+                f"{d['dropped']} is the same file as {d['kept']}; kept one entry",
+                Severity.INFO,
+                state=VerificationState.VERIFIED,
+                subject=d["kept"],
+                evidence=[Evidence(d["evidence"])],
+            )
+        )
     r.data["optional_skipped"] = res.optional_skipped
     if not res.ok:
         r.data["problems"] = problems_as_dicts(res)

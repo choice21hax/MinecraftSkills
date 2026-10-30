@@ -1,0 +1,90 @@
+# Offline CI for every pull request and push to main.
+# - No repository secrets are referenced anywhere in this workflow, so untrusted PR code never sees them.
+# - Network/provider tests live in network.yml (manual/scheduled only, never on pull_request).
+# - Third-party actions are pinned to full commit SHAs (tag in the trailing comment).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.5"
+  PYTHON_KEYRING_BACKEND: keyring.backends.fail.Keyring  # CI has no keyring; credential tests mock it
+
+jobs:
+  test:
+    name: test (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff check src tests scripts
+      - run: uv run ruff format --check src tests scripts
+      - run: uv run mypy
+      - run: uv run pytest --junitxml=reports/junit-${{ matrix.python }}.xml
+        env:
+          MCAT_CACHE_DIR: ${{ runner.temp }}/mcat-cache
+      - run: uv run mcat skills validate --json
+      - name: Upload test report (this job has no secrets)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: test-report-py${{ matrix.python }}
+          path: reports/
+          retention-days: 7
+
+  package:
+    name: package (wheel + sdist, clean install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv build -o dist
+      - name: Checksums
+        run: cd dist && sha256sum * | tee SHA256SUMS
+      - name: Install wheel into a clean environment and smoke-test it outside the checkout
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-env"
+          uv pip install --python "$RUNNER_TEMP/wheel-env/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP" && python3 "$GITHUB_WORKSPACE/scripts/smoke_installed.py" "$RUNNER_TEMP/wheel-env/bin/mcat"
+      - name: Install sdist into a clean environment and smoke-test it
+        run: |
+          uv venv "$RUNNER_TEMP/sdist-env"
+          uv pip install --python "$RUNNER_TEMP/sdist-env/bin/python" dist/*.tar.gz
+          cd "$RUNNER_TEMP" && python3 "$GITHUB_WORKSPACE/scripts/smoke_installed.py" "$RUNNER_TEMP/sdist-env/bin/mcat"
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7

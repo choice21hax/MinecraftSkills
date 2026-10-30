@@ -1,36 +1,61 @@
-# Verification record (2026-10-30)
+# Verification record
 
-Environment: Arch Linux (CachyOS kernel), Hyprland session, Python 3.14 via uv 0.13.5, Temurin JDK
-25.0.4.1, Gradle 9.8.1, GNOME Keyring (Secret Service). packwiz not installed. No CurseForge key.
+Only what is listed here was executed. Anything not listed is unverified.
 
-## Automated checks
+Environment (2026-10-30): Arch Linux (CachyOS kernel 7.3), Hyprland, uv 0.13.5, Python 3.12.15 /
+3.13.16 / 3.14.8, Temurin JDK 25.0.4.1, Gradle 9.8.1, GNOME Keyring (Secret Service) holding a
+CurseForge API key, Go 1.27.1, Docker 29.9.2 (rootful daemon). No Modrinth token. No podman, no Xvfb.
+
+## v0.2.0
+
+### Automated checks
 
 | Command | Result |
 | --- | --- |
-| `uv run ruff check src tests` / `ruff format --check` | pass |
-| `uv run mypy` | no issues in 43 source files |
-| `uv run pytest` (offline unit suite) | 136 passed |
-| `uv run pytest -m network` | 6 passed, 1 skipped (CurseForge: no key) |
-| `MCAT_RUN_BUILD_TESTS=1 uv run pytest -m build` | not re-run as a suite; the identical scaffold+build path was executed through the CLI (below) |
+| `uv run ruff check src tests scripts` / `ruff format --check` | pass |
+| `uv run mypy` | no issues in 44 source files |
+| `uv run pytest` (offline, hermetic) | 148 passed |
+| CI replay: `uv sync --locked --python {3.12,3.13,3.14}` + lint + mypy + pytest with `PYTHON_KEYRING_BACKEND=fail` | 148 passed on each |
+| `uv run pytest -m network` (packwiz on PATH, key from keyring) | 12 passed |
+| `actionlint` on both workflows | clean |
+| `uv build`; clean venv install of wheel and of sdist; `scripts/smoke_installed.py` | both pass |
 
-## Real executions
+### Real executions
 
 | What | Outcome |
 | --- | --- |
-| `mcat resolve` (sodium, lithium, modmenu, iris) for Fabric 26.2 against live Modrinth | success: 6 mods incl. fabric-api, placeholder-api as dependencies |
-| `mcat resolve` with `create` for Fabric 26.2 | blocked, with alternatives (1.21.1/neoforge ...); nothing guessed |
-| `mcat pack create ... --mrpack` + `mcat validate --online` | packwiz index hashes verified; Modrinth hashes/targets confirmed |
-| `mcat mod init --with-examples` + `mcat mod build --allow-build` | **Fabric 26.2 (loader 0.20.1, fabric-api 0.161.0+26.2), NeoForge 26.2.0.93, Forge 26.2-65.1.5: all compiled**, jars produced and their metadata re-read by MCAT |
-| `mcat migrate plan/apply` on a synthetic 1.20.1 Fabric pack built from real Modrinth projects (sodium, lithium, create-fabric, kubejs, fabric-api) to Fabric 26.2 | plan blocked (create-fabric, kubejs have no 26.2 Fabric build); apply produced workspace with recipe/quest transforms, quest dependency graph verified identical, `create:*` references reported unresolved |
-| Claude Code 2.1.314 discovery (`claude -p` in a repo with project-scope install) | listed all four skills with descriptions |
-| Codex 0.165.0 discovery (`codex debug prompt-input`) | all four skills present; absent in a control dir |
-| `codex exec` workflow run | **blocked**: Codex account usage limit reached during the session |
+| packwiz built from source (`go install github.com/packwiz/packwiz@latest`, commit 170b22d, 2026-10-14) | binary in session scratch dir, not installed system-wide |
+| `mcat pack create` (sodium, lithium, modmenu optional, Fabric 26.2) then `packwiz refresh` on a copy | **before fix**: packwiz added `mcat.lock.json` to the index and reordered `[versions]`. **after fix**: `diff -r` identical; `packwiz list` lists all 5 mods |
+| CurseForge `test` / `search` (jei, create, sodium) | correct projects (238222, 328085, 394468) |
+| CurseForge files for JEI, NeoForge 26.2 | 190 files over 4 pages, all tagged 26.2/NeoForge |
+| Fingerprint of real file `create_mobile_packages-1.20.1-0.6.1.jar` (downloaded from the official `downloadUrl` to scratch) | 2303265137 == API `fileFingerprint`; sha1 equal; `/v1/fingerprints` maps it back to project 1232978 |
+| Batch lookup of all 208 Astralization manifest entries | 208 mods/files returned; 11 disallow distribution (null `downloadUrl`) |
+| `mcat inspect` on Create-Astralization-1.0.3.zip | 7 SNBT parse errors (`#` comments) **fixed** -> 0; 7 chapters, 202 quests, 229 dependency edges, 0 dangling |
+| `mcat validate --online` on Create-Astralization-1.0.3.zip | `partial`: 201/208 confirmed for 1.20.1/Forge. Not passed: 2 files CurseForge-tagged Fabric only (f-tech-core, zfastnoise); 1 resource pack tagged 1.21.x; 2 files declare `create-fabric` (no Forge files: flagged as likely metadata errors); `sodium-options-api` and `cc-tweaked` declared required but not in the manifest (the pack ships a cc-tweaked jar in overrides that has **no** CurseForge fingerprint match, so it is reported as unverified, not as satisfied); 11 manual downloads |
+| Packaging: `uv tool install <repo>` (non-editable) with isolated HOME/UV_TOOL_DIR, project skill install, `uv tool uninstall` | links dangled and were misreported as foreign (needing `--force`) **fixed**: recognised as MCAT links and updated |
+| Secret scan (pattern scan of tree + full git history; byte search for the real CurseForge key across repo, `~/.cache/mcat`, session scratch: 4,241 files) | no matches |
 
-## What is NOT verified
+### Not verified in v0.2
+- The GitHub Actions workflows have not run on GitHub (they were linted and replayed locally; pushing
+  requires authorisation).
+- gitleaks/trufflehog were not run (installing them was not permitted in-session).
+- Cross-provider identity is CurseForge -> Modrinth only (CurseForge has no sha1 lookup).
+- CurseForge pack entries are still given placeholder `mods/cf-<project>-<file>.jar` paths offline;
+  online validation labels resource packs correctly, `inspect` does not.
 
-- Any mod loading in a running game, server or client; gameplay; rendering; quest completion.
-- CurseForge live API (needs a key); packwiz's own `refresh` on MCAT output (packwiz not installed).
-- Templates for game versions other than 26.2 (26.x others need `--allow-unverified`; <= 1.21.11 has no
-  template).
-- The Create: Astralization benchmark itself (ZIP not provided; see
-  `skills/minecraft-migrate/references/benchmark.md`).
+## v0.1.0
+
+| Command / execution | Outcome |
+| --- | --- |
+| offline suite / network suite | 136 passed / 6 passed, 1 skipped (no CurseForge key then) |
+| `mcat resolve` (sodium, lithium, modmenu, iris) Fabric 26.2, live Modrinth | success: 6 mods incl. fabric-api, placeholder-api |
+| `mcat resolve` with `create` for Fabric 26.2 | blocked with alternatives; nothing guessed |
+| `mcat pack create ... --mrpack` + `mcat validate --online` | index hashes verified; Modrinth hashes/targets confirmed |
+| `mcat mod init --with-examples` + `mcat mod build --allow-build` | Fabric 26.2 (loader 0.20.1, fabric-api 0.161.0+26.2), NeoForge 26.2.0.93, Forge 26.2-65.1.5: all compiled |
+| `mcat migrate plan/apply` synthetic 1.20.1 Fabric pack -> Fabric 26.2 | plan blocked (create-fabric, kubejs); apply produced workspace; quest graph identical; `create:*` reported unresolved |
+| Claude Code 2.1.314 / Codex 0.165.0 discovery | all four skills listed |
+| `codex exec` workflow run | blocked: Codex account usage limit |
+
+## Still not verified (all versions)
+- Any mod loading in a running game, server or client (v0.3 target).
+- Templates other than 26.2; migrations to real targets with the Astralization pack (v0.4 target).

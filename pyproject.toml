@@ -1,6 +1,6 @@
 [project]
 name = "minecraft-agent-toolkit"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCAT: deterministic Minecraft modpack, migration, mod-dev and debugging engine for Claude Code and Codex skills"
 readme = "README.md"
 requires-python = ">=3.12"

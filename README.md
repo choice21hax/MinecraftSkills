@@ -18,8 +18,10 @@ mcat skills install --agents claude,codex --scope user      # ~/.claude/skills +
 mcat skills status
 ```
 
-Development: `uv sync`, then `uv run pytest` (offline suite), `uv run ruff check src tests`,
-`uv run mypy`. Opt-in suites: `uv run pytest -m network`, `MCAT_RUN_BUILD_TESTS=1 uv run pytest -m build`.
+Development: `uv sync`, then `uv run pytest` (offline, hermetic), `uv run ruff check src tests scripts`,
+`uv run mypy`. Opt-in suites: `uv run pytest -m network` (live providers; packwiz oracle when `packwiz`
+is on PATH), `MCAT_RUN_BUILD_TESTS=1 uv run pytest -m build`. CI: `.github/workflows/ci.yml` (every PR,
+no secrets) and `network.yml` (manual/scheduled).
 
 ## Skills
 
@@ -72,7 +74,9 @@ mcat auth test curseforge
 
 There is no command that displays a stored secret. For CI only, set `MCAT_ALLOW_ENV_CREDENTIALS=1` and
 `MCAT_CURSEFORGE_API_KEY` from the CI secret store; values are never written to disk and are redacted.
-Files whose authors disallow third-party distribution are reported as manual downloads.
+Files whose authors disallow third-party distribution are reported as manual downloads (lockfile
+`restrictions`). When a mod is selected from both providers, identical files are merged by hash and
+recorded under `equivalents`; `mcat validate --online` checks CurseForge entries too.
 Keyring setup on Arch/Hyprland: [docs/security.md](docs/security.md#keyring-on-arch-linux--hyprland).
 
 ## Documentation

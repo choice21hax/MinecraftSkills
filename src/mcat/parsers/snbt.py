@@ -6,7 +6,8 @@ Two entry points:
 * :func:`rewrite_strings` rewrites the *contents of string tokens only*, leaving every other byte of the
   file untouched, so transformations are format-aware and diffs stay minimal.
 
-FTB Quests SNBT uses newlines as separators (commas optional), bare keys and numeric suffixes.
+FTB Quests SNBT uses newlines as separators (commas optional), bare keys and numeric suffixes. FTB config
+files (``config/*.snbt``) additionally use ``#`` line comments outside strings.
 """
 
 from __future__ import annotations
@@ -40,6 +41,10 @@ def tokenize(text: str) -> Iterator[Token]:
         c = text[i]
         if c in " \t\r\n,":
             i += 1
+            continue
+        if c == "#":  # FTB config SNBT line comment
+            j = text.find("\n", i)
+            i = n if j < 0 else j + 1
             continue
         if c in "{}[]:;":
             yield Token("punct", c, i, i + 1)

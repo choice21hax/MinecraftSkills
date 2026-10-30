@@ -7,6 +7,7 @@ third-party distribution are never downloaded; they are surfaced as manual-downl
 
 from __future__ import annotations
 
+import struct
 from typing import Any
 
 from mcat.models import Dependency, DepKind, FileRef, ModVersion, ProjectHit
@@ -29,8 +30,35 @@ _RELATION = {
 }  # 4 = Tool: not a runtime dependency
 
 
+MAX_PAGE = 50  # API maximum pageSize
+MAX_INDEX = 10_000  # the API rejects index + pageSize beyond this
+BATCH = 500  # ids per POST /v1/mods, /v1/mods/files, /v1/fingerprints request
+_FP_WHITESPACE = bytes((9, 10, 13, 32))
+
+
 class CurseForgeUnavailable(Exception):
     """No API key configured; callers should degrade to Modrinth-only mode."""
+
+
+def fingerprint(data: bytes) -> int:
+    """CurseForge file fingerprint: MurmurHash2 (seed 1) over the bytes with tab/LF/CR/space removed."""
+    data = data.translate(None, _FP_WHITESPACE)
+    m, length = 0x5BD1E995, len(data)
+    h = (1 ^ length) & 0xFFFFFFFF
+    tail = length & ~3
+    for (k,) in struct.iter_unpack("<I", data[:tail]):
+        k = (k * m) & 0xFFFFFFFF
+        k ^= k >> 24
+        k = (k * m) & 0xFFFFFFFF
+        h = ((h * m) & 0xFFFFFFFF) ^ k
+    rest = data[tail:]
+    if rest:
+        for i in range(len(rest) - 1, -1, -1):
+            h ^= rest[i] << (8 * i)
+        h = (h * m) & 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * m) & 0xFFFFFFFF
+    return h ^ (h >> 15)
 
 
 def normalize_file(f: dict[str, Any], mod: dict[str, Any] | None = None) -> ModVersion:
@@ -151,19 +179,76 @@ class CurseForgeProvider:
             self._mods[mod_id] = self._get(f"/v1/mods/{mod_id}")["data"]
         return self._mods[mod_id]
 
-    def versions(self, project: str, *, minecraft: str | None = None, loader: str | None = None) -> list[ModVersion]:
-        params: dict[str, Any] = {"pageSize": 50}
+    def _paged(self, path: str, params: dict[str, Any], *, limit: int, ttl: float) -> list[dict[str, Any]]:
+        """Follow ``pagination`` until ``limit`` items, the reported total or the API's index cap."""
+        out: list[dict[str, Any]] = []
+        index = 0
+        while len(out) < limit:
+            size = min(MAX_PAGE, limit - len(out), MAX_INDEX - index)
+            if size <= 0:
+                break
+            data = self._get(path, {**params, "index": index, "pageSize": size}, ttl=ttl)
+            page = data.get("data", [])
+            out.extend(page)
+            total = int((data.get("pagination") or {}).get("totalCount", 0))
+            index += len(page)
+            if not page or index >= total:
+                break
+        return out
+
+    def versions(
+        self, project: str, *, minecraft: str | None = None, loader: str | None = None, limit: int = 500
+    ) -> list[ModVersion]:
+        """Files of a project, newest first; filtered server-side when a target is given, paginated."""
+        params: dict[str, Any] = {}
         if minecraft:
             params["gameVersion"] = minecraft
         if loader:
             params["modLoaderType"] = LOADER_TYPES[loader]
         mod = self.mod(project)
-        data = self._get(f"/v1/mods/{project}/files", params, ttl=1800)
-        return [normalize_file(f, mod) for f in data.get("data", [])]
+        files = self._paged(f"/v1/mods/{project}/files", params, limit=limit, ttl=1800)
+        return [normalize_file(f, mod) for f in files]
 
-    def version(self, file_id: str, project: str) -> ModVersion:
-        f = self._get(f"/v1/mods/{project}/files/{file_id}", ttl=86400)["data"]
-        return normalize_file(f, self.mod(project))
+    def version(self, file_id: str, project: str | None = None) -> ModVersion:
+        if project is None:
+            f = self.files_batch([file_id]).get(str(file_id))
+            if f is None:
+                raise NetworkError(f"CurseForge file {file_id} not found")
+        else:
+            f = self._get(f"/v1/mods/{project}/files/{file_id}", ttl=86400)["data"]
+        return normalize_file(f, self.mod(str(f["modId"])))
+
+    def _post(self, path: str, body: dict[str, Any], ttl: float) -> Any:
+        return self.http.get_json(f"{API}{path}", method="POST", body=body, credential=self._cred, ttl=ttl)
+
+    def mods_batch(self, mod_ids: list[str]) -> dict[str, dict[str, Any]]:
+        missing = sorted({str(i) for i in mod_ids} - set(self._mods), key=int)
+        for i in range(0, len(missing), BATCH):
+            chunk = [int(x) for x in missing[i : i + BATCH]]
+            for m in self._post("/v1/mods", {"modIds": chunk}, ttl=3600).get("data", []):
+                self._mods[str(m["id"])] = m
+        return {str(i): self._mods[str(i)] for i in mod_ids if str(i) in self._mods}
+
+    def files_batch(self, file_ids: list[str]) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        ids = sorted({int(x) for x in file_ids})
+        for i in range(0, len(ids), BATCH):
+            for f in self._post("/v1/mods/files", {"fileIds": ids[i : i + BATCH]}, ttl=86400).get("data", []):
+                out[str(f["id"])] = f
+        return out
+
+    def match_fingerprints(self, fingerprints: list[int]) -> dict[int, ModVersion]:
+        """Identify local files by fingerprint. Only exact matches are returned."""
+        out: dict[int, ModVersion] = {}
+        fps = sorted(set(fingerprints))
+        for i in range(0, len(fps), BATCH):
+            data = self._post(f"/v1/fingerprints/{GAME_ID}", {"fingerprints": fps[i : i + BATCH]}, ttl=86400)
+            matches = (data.get("data") or {}).get("exactMatches", [])
+            self.mods_batch([str(mt["file"]["modId"]) for mt in matches])
+            for mt in matches:
+                f = mt["file"]
+                out[int(f["fileFingerprint"])] = normalize_file(f, self._mods.get(str(f["modId"])))
+        return out
 
     def download_url(self, project: str, file_id: str) -> str | None:
         """Official download URL, or None when the author disallows third-party distribution."""

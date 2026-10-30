@@ -17,6 +17,7 @@ import json
 import tomllib
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 from mcat.parsers.packs import PackFormatError, PackInfo, parse_pack
 from mcat.parsers.source import PackSource
@@ -217,6 +218,7 @@ def validate_path(path: Path, *, online: bool = False, server: bool = False) -> 
             if pack.format == "packwiz":
                 _check_packwiz_index(src, r)
             _check_lock(src, pack, r)
+            fps = _embedded_fingerprints(src, pack) if online else {}
     except (FileNotFoundError, PackFormatError, UnsafeArchiveError, ValueError) as e:
         r.fail(f"cannot read pack: {e}")
         return r
@@ -250,7 +252,7 @@ def validate_path(path: Path, *, online: bool = False, server: bool = False) -> 
             )
     _check_jars(pack, r)
     if online:
-        _check_online(pack, r)
+        _check_online(pack, r, fps)
     else:
         unverified = [e for e in pack.entries if not e.embedded]
         if unverified:
@@ -275,22 +277,249 @@ def validate_path(path: Path, *, online: bool = False, server: bool = False) -> 
     return r
 
 
-def _check_online(pack: PackInfo, r: Result) -> None:
+def _embedded_fingerprints(src: PackSource, pack: PackInfo) -> dict[int, str]:
+    """CurseForge fingerprints of jars physically present in the pack (fingerprint -> path)."""
+    from mcat.providers.curseforge import fingerprint
+
+    out: dict[int, str] = {}
+    roots = [f"{root}/" if root else "" for root in (pack.override_roots or [""])]
+    for e in pack.entries:
+        if not (e.embedded and e.path.endswith(".jar")):
+            continue
+        name = next((rt + e.path for rt in roots if src.exists(rt + e.path)), None)
+        if name is None:
+            continue
+        try:
+            out[fingerprint(src.read(name, 512 * 1024**2))] = e.path
+        except (KeyError, OSError, UnsafeArchiveError):
+            continue
+    return out
+
+
+def _check_online(pack: PackInfo, r: Result, embedded_fps: dict[int, str] | None = None) -> None:
+    _check_online_modrinth(pack, r)
+    _check_online_curseforge(pack, r, embedded_fps or {})
+
+
+_CF_CLASSES = {6: "mod", 12: "resource pack", 6552: "shader pack", 6945: "data pack", 4546: "customization"}
+
+
+def _cf_has_target_files(mod: dict[str, Any] | None, minecraft: str | None, loader_type: int | None) -> bool | None:
+    """Whether CurseForge's ``latestFilesIndexes`` lists any file for the target (None: unknown)."""
+    if not mod or not minecraft:
+        return None
+    idx = mod.get("latestFilesIndexes") or []
+    return any(i.get("gameVersion") == minecraft and i.get("modLoader") in (loader_type, None) for i in idx)
+
+
+def _check_online_curseforge(pack: PackInfo, r: Result, embedded_fps: dict[int, str]) -> None:
+    """Identity, target, hash, dependency and distribution checks against the official CurseForge API.
+
+    CurseForge game-version/loader tags and file dependency lists are author-entered metadata, so
+    disagreements are reported as probable (not confirmed) problems. Entries that could not be looked
+    up are reported as unverified, never as passing.
+    """
+    from mcat.models import DepKind
+    from mcat.providers.curseforge import (
+        LOADER_TYPES,
+        CurseForgeProvider,
+        CurseForgeUnavailable,
+        normalize_file,
+    )
+    from mcat.providers.http import NetworkError
+    from mcat.resolver.core import LOADER_COMPAT
+
+    entries = [e for e in pack.entries if e.provider == "curseforge" and e.version_id and e.project_id]
+    if not entries:
+        return
+
+    def unverified(reason: str) -> None:
+        r.add(
+            Finding(
+                "provider-compat-unverified",
+                f"{len(entries)} CurseForge entries not checked online: {reason}",
+                Severity.WARNING,
+                state=VerificationState.UNVERIFIED,
+            )
+        )
+
+    try:
+        cf = CurseForgeProvider()
+        files = cf.files_batch([e.version_id for e in entries if e.version_id])
+        embedded = cf.match_fingerprints(sorted(embedded_fps)) if embedded_fps else {}
+        mods = cf.mods_batch(sorted({str(f["modId"]) for f in files.values()}))
+    except CurseForgeUnavailable as err:
+        unverified(str(err))
+        return
+    except NetworkError as err:
+        unverified(f"lookup failed ({err})")
+        return
+    in_pack = {e.project_id for e in entries} | {v.project_id for v in embedded.values()}
+    for fp, v in sorted(embedded.items()):
+        r.add(
+            Finding(
+                "embedded-identified",
+                f"{embedded_fps[fp]} is CurseForge project {v.slug} ({v.project_id}), file {v.version_id}",
+                Severity.INFO,
+                state=VerificationState.VERIFIED,
+                evidence=[Evidence(f"curseforge fingerprint {fp}")],
+                subject=embedded_fps[fp],
+            )
+        )
+    identified = {embedded_fps[fp] for fp in embedded}
+    unidentified = sorted(
+        e.path for e in pack.entries if e.provider != "curseforge" and e.path not in identified
+    )  # entries that might provide a dependency under another identity
+    maybe = f" (it may be provided by an entry not identified on CurseForge: {', '.join(unidentified[:5])})"
+    loader_type = LOADER_TYPES.get(pack.loader or "")
+    dep_targets = cf.mods_batch(
+        sorted(
+            {
+                str(d["modId"])
+                for f in files.values()
+                for d in f.get("dependencies", [])
+                if d.get("relationType") == 3 and str(d["modId"]) not in in_pack
+            }
+        )
+    )
+    verified = 0
+    for e in entries:
+        raw = files.get(str(e.version_id))
+        if raw is None:
+            r.add(
+                Finding(
+                    "provider-lookup-failed",
+                    f"{e.path}: CurseForge file {e.version_id} not returned by the API",
+                    Severity.WARNING,
+                    state=VerificationState.UNVERIFIED,
+                    subject=e.path,
+                )
+            )
+            continue
+        ev = [Evidence(f"curseforge:file/{e.version_id}")]
+        mod = mods.get(str(raw["modId"]))
+        kind = _CF_CLASSES.get(int((mod or {}).get("classId") or 6), "other")
+        label = e.path if kind == "mod" else f"{e.path} ({kind} {raw.get('fileName', '')})"
+        problems = 0
+
+        def report(code: str, msg: str, sev: Severity, *, _l: str = label, _e: Any = e, **kw: Any) -> None:
+            nonlocal problems
+            problems += 1
+            r.add(
+                Finding(
+                    code,
+                    f"{_l}: {msg}",
+                    sev,
+                    evidence=[Evidence(f"curseforge:file/{_e.version_id}")],
+                    subject=_e.path,
+                    **kw,
+                )
+            )
+
+        if str(raw["modId"]) != str(e.project_id):
+            report(
+                "provider-identity-mismatch",
+                f"file {e.version_id} belongs to project {raw['modId']}, not {e.project_id}",
+                Severity.ERROR,
+                state=VerificationState.FAILED,
+            )
+        v = normalize_file(raw, mod)
+        f = v.primary_file
+        theirs = f.hashes if f else {}
+        for algo, value in e.hashes.items():
+            if algo in theirs and theirs[algo] != value:
+                report(
+                    "hash-mismatch",
+                    f"{algo} does not match CurseForge's file {e.version_id}",
+                    Severity.ERROR,
+                    state=VerificationState.FAILED,
+                )
+        if kind != "mod":
+            if pack.minecraft and v.game_versions and pack.minecraft not in v.game_versions:
+                report(
+                    "provider-metadata-mismatch",
+                    f"{kind} is tagged {sorted(v.game_versions)}, not {pack.minecraft}; it may still load "
+                    "(resource/data pack formats are checked at runtime)",
+                    Severity.INFO,
+                    state=VerificationState.UNVERIFIED,
+                )
+        else:
+            if pack.minecraft and pack.minecraft not in v.game_versions:
+                report(
+                    "provider-incompatible",
+                    f"CurseForge file {v.version_number} is tagged {v.game_versions}, not {pack.minecraft}",
+                    Severity.ERROR,
+                    confidence="probable",
+                )
+            if pack.loader and v.loaders and not set(v.loaders) & LOADER_COMPAT.get(pack.loader, {pack.loader}):
+                report(
+                    "provider-metadata-mismatch",
+                    f"CurseForge tags this file {v.loaders}, not {pack.loader}; the jar may still support "
+                    f"{pack.loader} (check its metadata or test at runtime)",
+                    Severity.WARNING,
+                    confidence="probable",
+                    state=VerificationState.UNVERIFIED,
+                )
+            elif pack.loader and not v.loaders:
+                report(
+                    "provider-loader-untagged",
+                    "CurseForge file carries no loader tag; loader compatibility unverified",
+                    Severity.INFO,
+                    state=VerificationState.UNVERIFIED,
+                )
+            for d in v.dependencies:
+                if d.kind is not DepKind.REQUIRED or d.project_id in in_pack:
+                    continue
+                target = dep_targets.get(d.project_id or "")
+                name = f"{target.get('slug')} ({d.project_id})" if target else d.project_id
+                satisfiable = _cf_has_target_files(target, pack.minecraft, loader_type)
+                if satisfiable is False:
+                    report(
+                        "dependency-metadata-suspect",
+                        f"declares required CurseForge project {name}, which has no {pack.minecraft}/{pack.loader} "
+                        "files; likely a cross-loader metadata error (the jar's own metadata decides)",
+                        Severity.WARNING,
+                        confidence="possible",
+                        state=VerificationState.UNVERIFIED,
+                    )
+                else:
+                    report(
+                        "missing-dependency",
+                        f"requires CurseForge project {name}, which is not in the pack"
+                        + (maybe if unidentified else ""),
+                        Severity.WARNING if unidentified else Severity.ERROR,
+                        confidence="probable",
+                        state=VerificationState.UNVERIFIED if unidentified else VerificationState.FAILED,
+                    )
+        if f and not f.download_allowed:
+            r.add(
+                Finding(
+                    "manual-download",
+                    f"{label}: author disallows third-party distribution; download manually through CurseForge",
+                    Severity.INFO,
+                    evidence=ev,
+                    subject=e.path,
+                )
+            )
+        verified += problems == 0
+    r.add(
+        Finding(
+            "curseforge-online",
+            f"{verified}/{len(entries)} CurseForge entries confirmed for {pack.minecraft}/{pack.loader} "
+            "(identity, target tags, hashes, required dependencies)",
+            Severity.INFO,
+            state=VerificationState.VERIFIED if verified == len(entries) else VerificationState.UNVERIFIED,
+        )
+    )
+
+
+def _check_online_modrinth(pack: PackInfo, r: Result) -> None:
     from mcat.providers.http import NetworkError
     from mcat.providers.modrinth import ModrinthProvider
 
     mr = ModrinthProvider()
     for entry in pack.entries:
         if entry.provider != "modrinth" or not entry.version_id:
-            if entry.provider == "curseforge":
-                r.add(
-                    Finding(
-                        "provider-compat-unverified",
-                        f"{entry.path}: CurseForge online check not implemented in validate; use `mcat resolve`",
-                        Severity.INFO,
-                        state=VerificationState.UNVERIFIED,
-                    )
-                )
             continue
         try:
             v = mr.version(entry.version_id)

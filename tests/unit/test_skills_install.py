@@ -111,3 +111,18 @@ def test_cli_skills_json(project, capsys):
     code = main(["skills", "status", "--scope", "project", "--project", str(project), "--json"])
     data = json.loads(capsys.readouterr().out)
     assert code == 0 and data["data"]["discoverable"]["codex"] == sorted(sk.SKILL_NAMES)
+
+
+def test_dangling_link_from_uninstalled_mcat_package_is_updated(project, tmp_path):
+    # regression (v0.2 packaging audit): after `uv tool uninstall`, links into the removed
+    # site-packages/mcat/_data/skills were misreported as foreign and needed --force
+    base = project / ".claude/skills"
+    base.mkdir(parents=True)
+    gone = tmp_path / "old-venv/lib/python3.13/site-packages/mcat/_data/skills"
+    (base / "minecraft-debug").symlink_to(gone / "minecraft-debug")
+    (base / "minecraft-moddev").symlink_to(tmp_path / "elsewhere/skills/minecraft-moddev")  # not MCAT's layout
+    (base / "minecraft-migrate").symlink_to(gone / "some-other-skill")  # wrong name: not ours
+    rows = {r.skill: r for r in sk.install(["claude"], "project", project)}
+    assert rows["minecraft-debug"].state == "linked" and rows["minecraft-debug"].detail == "updated"
+    assert rows["minecraft-moddev"].state == "conflict" and rows["minecraft-migrate"].state == "conflict"
+    assert (base / "minecraft-debug").resolve() == (sk.canonical_root() / "minecraft-debug").resolve()

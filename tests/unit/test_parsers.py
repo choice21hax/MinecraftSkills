@@ -161,3 +161,11 @@ def test_js_scan_skips_comments_regex_templates():
     assert not any("not_an_id" in v for v in vals)
     new, changes = jsscan.rewrite_strings(KUBEJS_SERVER, lambda s: "x:y" if s == "minecraft:andesite" else None)
     assert "'x:y'" in new and len(changes) == 1
+
+
+def test_snbt_hash_comments_regression():
+    # FTB config files (e.g. config/ftbxmodcompat.snbt) carry '#' comments; a '#' inside a string is data
+    text = '{\n\t# Select the "permissions" impl\n\tsel: "default"  # trailing\n\ttag: "a#b"\n}\n'
+    assert snbt.parse(text) == {"sel": "default", "tag": "a#b"}
+    new, changes = snbt.rewrite_strings(text, lambda s: "x" if s == "default" else None)
+    assert len(changes) == 1 and '# Select the "permissions" impl' in new and 'sel: "x"' in new

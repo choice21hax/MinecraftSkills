@@ -181,3 +181,18 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("MCAT_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.delenv("MCAT_ALLOW_ENV_CREDENTIALS", raising=False)
     return home
+
+
+@pytest.fixture(autouse=True)
+def _hermetic(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Offline tests must never reach the network or the developer's real cache/offline settings."""
+    if request.node.get_closest_marker("network") or request.node.get_closest_marker("build"):
+        return
+    import httpx
+
+    def refuse(self, req):  # pragma: no cover - only hit by a buggy test
+        raise AssertionError(f"offline test attempted a real HTTP request: {req.url}")
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+    monkeypatch.delenv("MCAT_OFFLINE", raising=False)
+    monkeypatch.setenv("MCAT_CACHE_DIR", str(request.getfixturevalue("tmp_path") / "mcat-http-cache"))

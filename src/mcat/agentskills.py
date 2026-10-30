@@ -39,14 +39,16 @@ def canonical_root() -> Path:
     env = os.environ.get("MCAT_SKILLS_DIR")
     if env:
         return Path(env).resolve()
-    here = Path(__file__).resolve()
+    # a built wheel carries its own copy; prefer it so an installed mcat never picks up an unrelated
+    # skills/ folder from a parent directory (e.g. a venv created inside some checkout)
+    packaged = Path(str(resources.files("mcat") / "_data" / "skills"))
+    if (packaged / SKILL_NAMES[0] / "SKILL.md").is_file():
+        return packaged
+    here = Path(__file__).resolve()  # editable/source checkout: <repo>/src/mcat/agentskills.py
     for parent in here.parents:
         cand = parent / "skills"
         if (cand / SKILL_NAMES[0] / "SKILL.md").is_file():
             return cand
-    packaged = Path(str(resources.files("mcat") / "_data" / "skills"))
-    if (packaged / SKILL_NAMES[0] / "SKILL.md").is_file():
-        return packaged
     raise SkillInstallError("canonical skills directory not found (set MCAT_SKILLS_DIR)")
 
 
@@ -108,12 +110,27 @@ def target_base(agent: str, scope: str, project: Path) -> Path:
     return base / AGENT_DIRS[agent]
 
 
+def _is_mcat_link_target(target: Path, name: str) -> bool:
+    """True only for MCAT's own layouts: a packaged ``mcat/_data/skills/<name>`` directory, or a live
+    ``<checkout>/skills/<name>`` next to ``src/mcat/agentskills.py``. Broken links into arbitrary
+    ``skills/`` folders stay conflicts: they could belong to anything."""
+    parts = target.parts
+    if name not in SKILL_NAMES or not parts or parts[-1] != name:
+        return False
+    if parts[-4:-1] == ("mcat", "_data", "skills"):
+        return True
+    return parts[-2:-1] == ("skills",) and (target.parent.parent / "src" / "mcat" / "agentskills.py").is_file()
+
+
 def inspect_entry(entry: Path, source: Path) -> tuple[str, str]:
     if entry.is_symlink():
         raw = os.readlink(entry)
         resolved = (entry.parent / raw).resolve() if not os.path.isabs(raw) else Path(raw).resolve()
         if resolved == source.resolve():
             return ("linked", str(resolved)) if resolved.exists() else ("broken-link", str(resolved))
+        if _is_mcat_link_target(Path(raw) if os.path.isabs(raw) else entry.parent / raw, entry.name):
+            # another (moved, uninstalled or parallel) MCAT install created this link: safe to update
+            return "broken-link", f"link from another MCAT install -> {raw}"
         if not resolved.exists():
             return "conflict", f"foreign broken symlink -> {raw}"
         return "conflict", f"symlink to unrelated location {resolved}"

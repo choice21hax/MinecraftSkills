@@ -38,6 +38,13 @@ resolution, hashing, file writing). Never hand-edit lockfiles or invent versions
 5. **Create**: `mcat pack create spec.yaml --output ./out-dir --json` (writes packwiz-format files plus
    the lockfile; add `--mrpack pack.mrpack` to also export a Modrinth pack).
 6. **Validate**: `mcat validate ./out-dir --json` and fix every `error` finding before handing off.
+   `--online` re-checks every Modrinth/CurseForge entry against the provider (identity, target,
+   hashes, required dependencies); entries that could not be looked up are `unverified`, not passing.
+
+Mixing providers: the lockfile's `provider_identity` lists mods selected from both Modrinth and
+CurseForge that are byte-identical (merged, with `equivalents` provenance) and `duplicate-project`
+conflicts (same project, different files). Identity comes only from file hashes, never names. Files in
+`restrictions` cannot be redistributed: tell the user they must be downloaded manually via CurseForge.
 
 Optional mods, client/server sides, and per-mod notes all live in the spec - see the reference.
 

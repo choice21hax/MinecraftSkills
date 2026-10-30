@@ -46,9 +46,30 @@ edits system files.
 `MCAT_ALLOW_ENV_CREDENTIALS=1` plus `MCAT_CURSEFORGE_API_KEY` / `MCAT_MODRINTH_TOKEN`. Without the opt-in
 flag the variables are ignored (and `auth status` says so). Values are never persisted.
 
+GitHub Actions layout:
+- `ci.yml` runs on every pull request and references **no secrets**; permissions are `contents: read`,
+  checkout uses `persist-credentials: false`, and every third-party action is pinned to a commit SHA.
+- `network.yml` is the only workflow that reads `MCAT_CURSEFORGE_API_KEY`. It triggers on `schedule`
+  and `workflow_dispatch` only (never `pull_request`/`pull_request_target`), so code from forks cannot
+  run with the key; the secret lives in the `providers` environment, where required reviewers can be
+  configured. The key is passed only to the test step's environment.
+- Uploaded artifacts are JUnit reports and built distributions from the secret-free workflow.
+
+## Repository hygiene (v0.2 audit)
+
+- Pattern scan of the working tree and full git history for common token formats (CurseForge-style
+  `$2a$` keys, `mrp_`, GitHub, AWS, OpenAI-style, private keys, Slack): no matches.
+- Byte search for the real CurseForge key across the repo, MCAT's HTTP cache and session outputs: no
+  matches. The HTTP cache stores response bodies only, never request headers.
+- No binaries, jars, archives or files over 200 KB are tracked. Real modpacks and downloaded jars are
+  kept outside the repository (`benchmarks/inputs/` is git-ignored).
+- Offline tests cannot reach the network (autouse guard), so they cannot leak credentials either.
+
 ## Known gaps
 
 - Mod JARs are not scanned for malware (only metadata is read). Run unknown jars only in a sandbox.
 - Gradle builds run with the user's privileges once `--allow-build` is given; use a container/VM for
   untrusted projects.
 - Redaction catches registered secrets and common token shapes, not arbitrary personal data in logs.
+- A dedicated secret scanner (gitleaks/trufflehog) has not been run; the v0.2 audit used pattern and
+  exact-key searches.

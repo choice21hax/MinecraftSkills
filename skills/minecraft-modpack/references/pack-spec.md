@@ -26,6 +26,11 @@ exclude: [some-dependency] # never pull these in (resolution fails if they are r
 Contains, per selected mod: provider, project id, immutable version id, version number, file name,
 sha1/sha512, size, download URL (or `download_allowed: false` for CurseForge files that forbid
 third-party distribution), side, channel, license, and `reason` (`requested` or `dependency of X`).
+Top-level sections: `restrictions` (files users must download manually from CurseForge),
+`unlicensed_or_unknown` (no license metadata: CurseForge never provides one), and `provider_identity`
+(`merged`: byte-identical files found on both providers, kept once with `equivalents`; `conflicts`:
+same project resolved to different files; `unmatched`: CurseForge files with no Modrinth hash match).
+Mods and graph edges are sorted, so the same spec and provider data always produce the same bytes.
 The lockfile is the reproducible source of truth; regenerate it with `mcat resolve` rather than editing.
 
 ## Resolution failures

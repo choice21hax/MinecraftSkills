@@ -1,7 +1,8 @@
 """Opt-in integration tests against real services and toolchains.
 
 uv run pytest -m network                       # Modrinth / loader metadata (no credentials)
-MCAT_ALLOW_ENV_CREDENTIALS=1 MCAT_CURSEFORGE_API_KEY=... uv run pytest -m network -k curseforge
+uv run pytest -m network -k curseforge          # key from the OS keyring (or the CI env opt-in)
+PATH=$PATH:/path/to/packwiz uv run pytest -m network -k packwiz   # real packwiz oracle
 MCAT_RUN_BUILD_TESTS=1 uv run pytest -m build  # real Gradle builds (downloads toolchains, minutes)
 uv run pytest -m network -k codex              # Codex skill discovery via `codex debug prompt-input`
 """
@@ -41,14 +42,102 @@ def test_nonexistent_version_unsupported():
     assert not LoaderCatalog().support("fabric", "1.99.99").supported
 
 
-@pytest.mark.network
-@pytest.mark.skipif(not os.environ.get("MCAT_CURSEFORGE_API_KEY"), reason="no CurseForge key in environment")
-def test_curseforge_search():
-    from mcat.providers.curseforge import CurseForgeProvider
+def _curseforge():
+    from mcat.providers.curseforge import CurseForgeProvider, CurseForgeUnavailable
 
-    cf = CurseForgeProvider()
+    try:
+        return CurseForgeProvider()
+    except CurseForgeUnavailable as e:
+        pytest.skip(str(e))
+
+
+# Targets below were chosen from real API results on 2026-10-30 (JEI: 190 NeoForge 26.2 files;
+# create-mobile-packages file 7654463 fingerprint 2303265137; servercore disallows distribution).
+@pytest.mark.network
+def test_curseforge_search():
+    cf = _curseforge()
     assert cf.test()
-    assert cf.search("jei", loader="neoforge", limit=3)
+    hits = cf.search("jei", minecraft="26.2", loader="neoforge", limit=3)
+    assert hits[0].slug == "jei" and hits[0].project_id == "238222"
+
+
+@pytest.mark.network
+def test_curseforge_versions_paginate_and_filter():
+    cf = _curseforge()
+    vs = cf.versions("238222", minecraft="26.2", loader="neoforge")
+    assert len(vs) > 50  # more than one page
+    assert all("26.2" in v.game_versions and "neoforge" in v.loaders for v in vs)
+    assert len({v.version_id for v in vs}) == len(vs)
+    required = {d.project_id for d in vs[0].dependencies if d.kind.value == "required"}
+    assert required  # JEI 26.2 files declare a required library project
+
+
+@pytest.mark.network
+def test_curseforge_fingerprint_identifies_real_file(tmp_path):
+    from mcat.providers.curseforge import fingerprint
+
+    cf = _curseforge()
+    raw = cf.files_batch(["7654463"])["7654463"]
+    dest = cf.http.download(raw["downloadUrl"], tmp_path / raw["fileName"])
+    fp = fingerprint(dest.read_bytes())
+    assert fp == raw["fileFingerprint"] == 2303265137
+    assert cf.match_fingerprints([fp])[fp].project_id == "1232978"
+
+
+@pytest.mark.network
+def test_curseforge_restricted_file_not_downloadable():
+    cf = _curseforge()
+    assert cf.mod("550579")["allowModDistribution"] is False
+    v = cf.versions("550579", minecraft="1.20.1", loader="forge", limit=5)[0]
+    assert v.primary_file is not None and not v.primary_file.download_allowed and v.primary_file.url is None
+
+
+@pytest.mark.network
+def test_curseforge_online_validation_of_real_manifest(tmp_path):
+    import json
+
+    from mcat.validation.validate import validate_path
+    from tests.conftest import write_zip
+
+    _curseforge()
+    manifest = {
+        "minecraft": {"version": "1.20.1", "modLoaders": [{"id": "forge-47.4.10", "primary": True}]},
+        "manifestType": "minecraftModpack",
+        "manifestVersion": 1,
+        "name": "t",
+        "version": "1",
+        "files": [
+            {"projectID": 1232978, "fileID": 7654463, "required": True},  # forge 1.20.1 file
+            {"projectID": 238222, "fileID": 9352384, "required": True},  # JEI for NeoForge 26.2: wrong target
+        ],
+        "overrides": "overrides",
+    }
+    r = validate_path(write_zip(tmp_path / "p.zip", {"manifest.json": json.dumps(manifest)}), online=True)
+    codes = {(f.code, f.subject) for f in r.findings}
+    assert ("provider-incompatible", "mods/cf-238222-9352384.jar") in codes
+    assert not any(s == "mods/cf-1232978-7654463.jar" and c == "provider-incompatible" for c, s in codes)
+    assert r.status.value == "failed"
+
+
+@pytest.mark.network
+@pytest.mark.skipif(not shutil.which("packwiz"), reason="packwiz not on PATH")
+def test_packwiz_refresh_is_a_noop_on_mcat_output(tmp_path):
+    # real packwiz as an interoperability oracle: refreshing MCAT's pack must not change a byte
+    import filecmp
+
+    from mcat.pack.build import resolve_spec, write_packwiz
+    from mcat.resolver.spec import parse_spec
+
+    spec = parse_spec(
+        {"name": "o", "version": "1", "minecraft": "26.2", "loader": "fabric", "mods": ["sodium", "lithium"]}, "d"
+    )
+    _, lock, _ = resolve_spec(spec)
+    write_packwiz(lock, tmp_path / "a")
+    shutil.copytree(tmp_path / "a", tmp_path / "b")
+    subprocess.run(["packwiz", "refresh"], cwd=tmp_path / "b", check=True, capture_output=True, timeout=120)
+    cmp = filecmp.dircmp(tmp_path / "a", tmp_path / "b")
+    assert not cmp.diff_files and not cmp.left_only and not cmp.right_only
+    assert not filecmp.dircmp(tmp_path / "a" / "mods", tmp_path / "b" / "mods").diff_files
 
 
 @pytest.mark.network

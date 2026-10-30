@@ -24,6 +24,7 @@ from mcat.providers.curseforge import CurseForgeProvider, CurseForgeUnavailable
 from mcat.providers.modrinth import ModrinthProvider
 from mcat.resolver.core import Request, Resolution, Resolver, lock_dict
 from mcat.resolver.spec import PackSpec
+from mcat.resolver.unify import HashLookup, unify
 from mcat.security.archive import ensure_fresh_output, normalize_member
 
 MRPACK_ALLOWED_DOWNLOAD_HOSTS = ("cdn.modrinth.com", "github.com", "raw.githubusercontent.com", "gitlab.com")
@@ -35,8 +36,14 @@ class PackBuildError(Exception):
     pass
 
 
-def make_fetchers(need_curseforge: bool) -> tuple[Any, Any, list[str]]:
-    """Return (fetch, fetch_version, warnings) backed by the real providers."""
+def make_fetchers(
+    need_curseforge: bool, *, minecraft: str | None = None, loader: str | None = None
+) -> tuple[Any, Any, list[str]]:
+    """Return (fetch, fetch_version, warnings) backed by the real providers.
+
+    CurseForge projects can have thousands of files, so its fetcher asks the API for the target's files
+    (server-side filters, paginated) and falls back to the newest page only to explain alternatives.
+    """
     mr = ModrinthProvider()
     cf: CurseForgeProvider | None = None
     warnings: list[str] = []
@@ -51,20 +58,30 @@ def make_fetchers(need_curseforge: bool) -> tuple[Any, Any, list[str]]:
             return mr.versions(project)
         if cf is None:
             raise CurseForgeUnavailable(f"curseforge:{project} requested but no CurseForge API key is configured")
-        return cf.versions(project)
+        found = cf.versions(project, minecraft=minecraft, loader=loader) if minecraft else []
+        return found or cf.versions(project, limit=50)
 
     def fetch_version(provider: str, version_id: str) -> ModVersion | None:
-        return mr.version(version_id) if provider == "modrinth" else None
+        if provider == "modrinth":
+            return mr.version(version_id)
+        return cf.version(version_id) if cf is not None else None
 
     return fetch, fetch_version, warnings
 
 
 def resolve_spec(
-    spec: PackSpec, *, fetch: Any = None, fetch_version: Any = None, catalog: LoaderCatalog | None = None
+    spec: PackSpec,
+    *,
+    fetch: Any = None,
+    fetch_version: Any = None,
+    catalog: LoaderCatalog | None = None,
+    hash_lookup: HashLookup | None = None,
 ) -> tuple[Resolution, dict[str, Any], list[str]]:
     warnings: list[str] = []
     if fetch is None:
-        fetch, fetch_version, warnings = make_fetchers(any(m.provider == "curseforge" for m in spec.mods))
+        fetch, fetch_version, warnings = make_fetchers(
+            any(m.provider == "curseforge" for m in spec.mods), minecraft=spec.minecraft, loader=spec.loader
+        )
     catalog = catalog or LoaderCatalog()
     support = catalog.support(spec.loader, spec.minecraft)
     if not support.supported:
@@ -86,10 +103,24 @@ def resolve_spec(
         fetch_version=fetch_version,
     )
     res = resolver.resolve([Request(m.provider, m.id, m.version, m.side, m.optional) for m in spec.mods])
+    identity = unify(res, hash_lookup or ModrinthProvider().versions_by_hash)
+    if identity.lookup_error:
+        warnings.append(
+            f"cross-provider duplicate check could not run ({identity.lookup_error}); "
+            "the same mod may be listed from both providers"
+        )
     target = {"minecraft": spec.minecraft, "loader": spec.loader, "loader_version": loader_version}
     lock = lock_dict(res, target=target, spec_digest=spec.digest, java=support.java, tool_version=__version__)
     lock["pack"] = {"name": spec.name, "version": spec.version}
     lock["loader_evidence"] = support.evidence
+    lock["provider_identity"] = {
+        "method": "curseforge sha1 -> modrinth version_files",
+        "checked": identity.checked,
+        "merged": identity.merged,
+        "conflicts": identity.conflicts,
+        "unmatched": identity.unmatched,
+        "error": identity.lookup_error,
+    }
     return res, lock, warnings
 
 
@@ -108,7 +139,7 @@ def write_packwiz(lock: dict[str, Any], out: Path, extra_files: dict[str, bytes]
     index_files: list[dict[str, Any]] = []
     for rel, data in sorted((extra_files or {}).items()):
         rel = normalize_member(rel)
-        if rel in ("pack.toml", "index.toml", "mcat.lock.json") or rel.endswith(".pw.toml"):
+        if rel in ("pack.toml", "index.toml", "mcat.lock.json", ".packwizignore") or rel.endswith(".pw.toml"):
             notes.append(f"skipped reserved path from content: {rel}")
             continue
         target = out / rel
@@ -155,9 +186,14 @@ def write_packwiz(lock: dict[str, Any], out: Path, extra_files: dict[str, bytes]
         "version": lock["pack"]["version"],
         "pack-format": "packwiz:1.1.0",
         "index": {"file": "index.toml", "hash-format": "sha256", "hash": _sha256(index)},
-        "versions": {"minecraft": t["minecraft"], _PACKWIZ_LOADER_KEY[t["loader"]]: t["loader_version"]},
+        # packwiz writes the versions table with sorted keys; matching it keeps `packwiz refresh` a no-op
+        "versions": dict(
+            sorted({"minecraft": t["minecraft"], _PACKWIZ_LOADER_KEY[t["loader"]]: t["loader_version"]}.items())
+        ),
     }
     (out / "pack.toml").write_bytes(tomli_w.dumps(pack).encode())
+    # the lockfile is MCAT provenance, not instance content: keep packwiz from indexing/distributing it
+    (out / ".packwizignore").write_text("mcat.lock.json\n")
     (out / "mcat.lock.json").write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
     return notes
 

@@ -41,6 +41,7 @@ class Selection:
     reasons: list[str]
     side_override: str | None = None
     optional: bool = False
+    equivalents: list[str] = field(default_factory=list)  # same file from another provider (by hash)
 
 
 @dataclass
@@ -285,8 +286,8 @@ def _find_cycles(edges: list[tuple[str, str, str]]) -> list[list[str]]:
 def lock_dict(
     res: Resolution, *, target: dict[str, Any], spec_digest: str, java: int | None, tool_version: str
 ) -> dict[str, Any]:
-    mods = []
-    for key, sel in res.selected.items():
+    mods: list[dict[str, Any]] = []
+    for key, sel in sorted(res.selected.items()):  # sorted: lockfiles must not depend on traversal order
         v = sel.version
         f = v.primary_file
         mods.append(
@@ -319,8 +320,14 @@ def lock_dict(
                 ],
                 "reasons": sorted(sel.reasons),
                 "provenance": f"{v.provider}:version/{v.version_id}",
+                "equivalents": sorted(sel.equivalents),
             }
         )
+    restrictions = [
+        {"key": m["key"], "file": m["file"]["filename"], "reason": "author disallows third-party distribution"}
+        for m in mods
+        if m["file"] and not m["file"]["download_allowed"]
+    ]
     return {
         "lock_version": 1,
         "generated_by": f"mcat {tool_version}",
@@ -328,5 +335,7 @@ def lock_dict(
         "target": target,
         "java": java,
         "mods": mods,
-        "graph": {"edges": [list(e) for e in res.edges], "cycles": res.cycles},
+        "restrictions": restrictions,
+        "unlicensed_or_unknown": sorted(m["key"] for m in mods if not m["license"]),
+        "graph": {"edges": sorted(list(e) for e in res.edges), "cycles": res.cycles},
     }

@@ -1,8 +1,59 @@
 # Implementation checklist
 
-Legend: [x] done and tested · [~] partial (see note) · [ ] not done
+Legend: [x] done and tested · [~] partial (see note) · [ ] not done · [!] blocked (reason given)
 
-## M1: Foundation
+Roadmap: v0.1 (M1-M4, below) -> v0.2 hardening/CI/providers -> v0.3 runtime verification ->
+v0.4 versions + real migration -> v1.0 distribution. Evidence for every [x] is in
+[verification.md](verification.md).
+
+## v0.2: hardening, CI and providers
+- [x] `.github/workflows/ci.yml`: PR + push to main; `contents: read`; actions pinned to commit SHAs;
+      uv via `astral-sh/setup-uv` (SHA-pinned, uv 0.13.5) with cache; Python 3.12/3.13/3.14 matrix;
+      `uv sync --locked`, ruff check, ruff format --check, mypy, pytest, `mcat skills validate`;
+      failure-only JUnit upload (job has no secrets); actionlint-clean
+- [x] Package job: wheel + sdist with SHA256SUMS, clean-venv install of each, smoke test outside the
+      checkout (`scripts/smoke_installed.py`: packaged skills, project install/uninstall in a temp dir,
+      JSON envelope, exit codes 1/2/4)
+- [x] `.github/workflows/network.yml`: schedule + manual only (never `pull_request`), `providers`
+      environment holds the CurseForge key, builds real packwiz from source as an oracle
+- [~] Workflows validated locally (actionlint, local matrix replay); not yet run on GitHub (pushing
+      needs the user's authorisation)
+- [x] Offline tests are hermetic: an autouse guard fails any non-`network` test that opens a socket
+- [x] CurseForge live: search, server-side game/loader filters, pagination (`index`/`pageSize`, 10k
+      cap), batch mods/files, fingerprint identification (MurmurHash2, verified on a real file),
+      restricted downloads, dependency relation types; live tests use targets taken from real results
+- [x] Cross-provider identity (`resolver/unify.py`): CurseForge sha1 -> Modrinth `version_files`;
+      byte-identical selections merged with `equivalents` provenance; same project / different files
+      -> `duplicate-project` problem with evidence; never by name
+- [x] Deterministic lockfile: mods and edges sorted; `restrictions`, `unlicensed_or_unknown`,
+      `provider_identity` sections
+- [x] `mcat validate --online` for CurseForge: identity, game version, loader tags, hashes, required
+      dependencies (incl. "satisfiable on this target?"), project class (mods vs resource packs),
+      embedded jars identified by fingerprint; lookup failures -> `unverified`
+- [x] Real packwiz (source build, commit 170b22d) as oracle: `packwiz refresh` is now a byte-for-byte
+      no-op on MCAT output (fixed: lockfile indexed, `versions` key order) + `packwiz list` reads it
+- [x] SNBT `#` comments (found on the real Astralization pack): 7 parse errors -> 0, regression test
+- [x] Packaging audit: editable, `uv tool install` (non-editable), wheel, sdist; packaged skills
+      preferred over stray `skills/` dirs; dangling links from an uninstalled/moved MCAT install are
+      repaired without `--force` (regression test)
+- [x] `mcat auth test <provider>` without a credential -> `blocked` (exit 4)
+- [x] Repository scan: no token patterns in tree or history; real CurseForge key absent from repo,
+      cache and scratch outputs; no binaries or files > 200 KB
+- [!] gitleaks could not be installed in this session (tool install denied); a pattern scan was used
+
+## v0.3: runtime verification
+- [ ] `mcat test server|client|mod|report`, sandbox, server smoke tests, broken-pack detection
+
+## v0.4: broader versions and real migration
+- [ ] Version-aware templates (1.20.1, 1.21.1), compatibility registry, Astralization scenarios A/B,
+      semantic adapters, regression corpus
+
+## v1.0: distribution
+- [ ] Licensing recommendation, reproducible packaging, `doctor` expansion, docs, release validation
+
+## v0.1 milestones (M1-M4)
+
+### M1: Foundation
 - [x] `src/` package, `pyproject.toml`, uv, Ruff, mypy, pytest
 - [x] CLI with JSON envelope, stable schema, exit codes, `--help`
 - [x] Four skills (`SKILL.md` + progressive references), spec-validated (`mcat skills validate`)
@@ -14,38 +65,27 @@ Legend: [x] done and tested · [~] partial (see note) · [ ] not done
 - [x] `inspect` for .mrpack, CurseForge zip, packwiz, plain instances; inventory; injection flags
 - [x] Hardened archive handling (ZIP Slip, symlinks, bombs, limits, no overwrite)
 
-## M2: Modpack creation and mod development
+### M2: Modpack creation and mod development
 - [x] CurseForge adapter (`x-api-key`, search/files/deps, restricted downloads); Modrinth-only fallback
-- [~] CurseForge live test needs a key (none available in this session; unit-tested with mocks)
+- [x] CurseForge live test (v0.2, key in keyring)
 - [x] Deterministic resolver: exact game/loader match, backtracking on incompatibilities, pins, channels,
       excludes, cycle detection, unsatisfiable explanations with alternatives
 - [x] Lockfile with hashes, provenance, reasons, sides, licenses
-- [x] packwiz-format writer (native) + `.mrpack` export; `packwiz refresh` cross-check when installed
-- [~] packwiz binary not installed here, so the cross-check path is untested against real packwiz
+- [x] packwiz-format writer (native) + `.mrpack` export; real packwiz cross-check (v0.2)
 - [x] Loader catalog from Mojang / Fabric meta / NeoForge maven / Forge maven + promotions
 - [x] Fabric, NeoForge, Forge templates for 26.x; **26.2 compiled with real Gradle for all three**
 - [~] Other 26.x versions: template applies but needs `--allow-unverified` until built
-- [ ] Templates for <= 1.21.11 (obfuscated era, different toolchains): reported unsupported
+- [ ] Templates for <= 1.21.11 (obfuscated era, different toolchains): planned for v0.4
 - [ ] Kotlin: blocked with an explicit message (no verified template)
 
-## M3: Migration and debugging
-- [x] Phase 1 inventory (mods, configs, KubeJS, recipes, tags, loot, worldgen, quests, assets)
-- [x] Phase 2 plan: retain/upgrade/blocked/unknown with evidence; full-graph resolution of kept set;
-      mechanics (FTB Quests, KubeJS, ...); editable `id_map` / `decisions`; source snapshot hash
-- [x] Phase 3 transforms: id mapping (JSON/SNBT/KubeJS string literals only), vanilla renames,
-      singular datapack folders (1.21), recipe result `id` (1.20.5), string ingredients (1.21.2),
-      KubeJS legacy `onEvent` heads; unknown content preserved; `changes.diff`
-- [x] Phase 4 build: new workspace, packwiz pack with transformed content, unmigrated jars kept aside
-- [x] Phase 5 verify: structural validation, quest dependency-graph equality, unresolved references;
-      overall status never "success"/"complete" while blockers exist
-- [ ] Rebuilding custom source-available mods inside a migration (manual via `minecraft-moddev`)
-- [ ] Runtime (server/client) launch tests: not implemented; reported as unverified
-- [x] Debug analyzer: dependency, version, Java, mixin, duplicate, wrong loader, OOM, EULA, port, etc.,
-      with confirmed/probable/possible confidence; pack cross-check; reversible quarantine repairs
+### M3: Migration and debugging
+- [x] Phase 1-5 migration workflow (see v0.1 notes in verification.md)
+- [ ] Rebuilding custom source-available mods inside a migration (v0.4)
+- [ ] Runtime (server/client) launch tests (v0.3)
+- [x] Debug analyzer with confidence levels, pack cross-check, reversible quarantine repairs
 
-## M4: Benchmark (Create: Astralization -> Fabric 26.2)
-- [~] Real ZIP not provided; not found on Modrinth. Synthetic regression fixture built from real
-      Modrinth projects (`tests/unit/test_migration.py`; live run documented in docs/verification.md)
-- [x] Verified blocker: Create has no Fabric 26.2 build (Modrinth: `create` <= 1.21.1 Forge/NeoForge,
-      `create-fabric` <= 1.20.1)
-- [ ] Workflow comparison in Codex: blocked by the Codex account usage limit during this session
+### M4: Benchmark (Create: Astralization -> Fabric 26.2)
+- [x] Real ZIP now available locally (not committed); `inspect` and `validate --online` run on it (v0.2)
+- [x] Verified blocker: Create has no Fabric 26.2 build
+- [ ] Full scenario A/B runs: v0.4
+- [ ] Workflow comparison in Codex: blocked by the Codex account usage limit (v0.1 session)

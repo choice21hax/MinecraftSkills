@@ -269,6 +269,8 @@ def auth_test(args: argparse.Namespace) -> Result:
         value, source = cred.get_secret(p)
         if not value:
             r.data[p] = "not configured"
+            if args.provider:  # explicitly asked to test a credential that does not exist
+                r.block(f"{p}: no credential configured (`mcat auth set {p}`)")
             continue
         try:
             if p == "curseforge":
@@ -366,5 +368,7 @@ def skills_validate(args: argparse.Namespace) -> Result:
         for p in agentskills.validate_skill(root / n):
             r.add(Finding("skill-invalid", p, Severity.ERROR))
             r.status = Status.FAILED
+    r.data["source"] = str(root)
+    r.data["skills"] = list(agentskills.SKILL_NAMES)
     r.summary = f"{root}"
     return r
