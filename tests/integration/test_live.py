@@ -4,6 +4,8 @@ uv run pytest -m network                       # Modrinth / loader metadata (no 
 uv run pytest -m network -k curseforge          # key from the OS keyring (or the CI env opt-in)
 PATH=$PATH:/path/to/packwiz uv run pytest -m network -k packwiz   # real packwiz oracle
 MCAT_RUN_BUILD_TESTS=1 uv run pytest -m build  # real Gradle builds (downloads toolchains, minutes)
+MCAT_RUN_BUILD_TESTS=1 MCAT_RUN_RUNTIME_TESTS=1 uv run pytest -m "build and runtime"  # registry re-verification
+uv run pytest -m network -k astralization       # benchmark; needs the user's ZIP (MCAT_ASTRALIZATION_ZIP)
 uv run pytest -m network -k codex              # Codex skill discovery via `codex debug prompt-input`
 """
 
@@ -12,6 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -201,3 +204,72 @@ def test_runtime_catches_broken_pack(tmp_path):
     )
     assert r.status.value == "failed"
     assert any(f.code == "runtime-missing-dependency" and "fabric-api" in f.message for f in r.findings)
+
+
+_LEGACY = [(e["loader"], e["minecraft"]) for e in moddev.load_registry()["entries"] if e["minecraft"] != "26.2"]
+
+
+@pytest.mark.build
+@pytest.mark.runtime
+@pytest.mark.skipif(
+    os.environ.get("MCAT_RUN_BUILD_TESTS") != "1" or os.environ.get("MCAT_RUN_RUNTIME_TESTS") != "1",
+    reason="sandboxed Gradle build + server run (accepts the EULA): set MCAT_RUN_BUILD_TESTS=1 MCAT_RUN_RUNTIME_TESTS=1",
+)
+@pytest.mark.parametrize(("loader", "minecraft"), _LEGACY)
+def test_registry_combination_builds_and_loads(loader, minecraft, tmp_path):
+    """Re-verifies a compatibility-registry entry end to end: scaffold, sandboxed build, mod loaded on a server."""
+    from mcat.pack.build import resolve_spec, write_packwiz
+    from mcat.resolver.spec import parse_spec
+    from mcat.validation.runtime import RuntimeOptions, run_server_test
+
+    plan = moddev.plan_scaffold(loader, minecraft, "mcatreg", "com.example.mcatreg")
+    moddev.write_project(plan, tmp_path / "proj", examples=True)
+    outcome = moddev.run_build(tmp_path / "proj", timeout=2400, sandbox=True)
+    assert outcome.ok, outcome.log_tail
+    jar = next(j for j in outcome.artifacts if not j.endswith("-sources.jar"))
+    pack = None
+    if loader == "fabric":  # the template mod depends on Fabric API
+        spec = parse_spec(
+            {"name": "f", "version": "1", "minecraft": minecraft, "loader": "fabric", "mods": ["fabric-api"]}, "d"
+        )
+        _, lock, _ = resolve_spec(spec)
+        write_packwiz(lock, tmp_path / "pack")
+        pack = tmp_path / "pack"
+    opts = RuntimeOptions(
+        loader=loader, minecraft=minecraft, pack=pack, accept_eula=True, workspace=tmp_path / "ws", cleanup=True
+    )
+    opts.mods = [Path(jar)]
+    r = run_server_test(opts, operation="test.mod")
+    assert r.status.value == "success", r.to_text()
+    assert any(f.code == "mod-loaded" and "mcatreg" in f.message for f in r.findings)
+
+
+ASTRALIZATION = os.environ.get(
+    "MCAT_ASTRALIZATION_ZIP", os.path.expanduser("~/Downloads/Create-Astralization-1.0.3.zip")
+)
+
+
+@pytest.mark.network
+@pytest.mark.skipif(not os.path.isfile(ASTRALIZATION), reason="needs the user's own Create: Astralization ZIP")
+@pytest.mark.parametrize(
+    ("loader", "minecraft", "create_state"),
+    [("fabric", "26.2", "blocked"), ("neoforge", "1.21.1", "proposed"), ("forge", "1.20.1", "verified")],
+)
+def test_astralization_benchmark(loader, minecraft, create_state, tmp_path):
+    """Scenario A (Fabric 26.2: Create blocked), B (NeoForge 1.21.1: Create available), control (same target)."""
+    from mcat.migration.plan import build_plan
+    from mcat.providers.curseforge import CurseForgeProvider, CurseForgeUnavailable
+
+    try:
+        cf = CurseForgeProvider()
+    except CurseForgeUnavailable:
+        pytest.skip("CurseForge key not configured")
+    plan = build_plan(
+        Path(ASTRALIZATION), minecraft, loader, modrinth=ModrinthProvider(), curseforge=cf, catalog=LoaderCatalog()
+    )
+    create = next(m for m in plan["mods"] if m["project_id"] == "328085")
+    assert create["state"] == create_state
+    assert plan["overall"]["complete"] is False
+    for m in plan["mods"]:
+        if m["state"] == "blocked":
+            assert m["reason"] and all(s["approved"] is False for s in m["suggested_replacements"])

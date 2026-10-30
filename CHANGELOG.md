@@ -2,6 +2,40 @@
 
 Versions follow semver; nothing is published to a registry. See docs/verification.md for evidence.
 
+## 0.4.0 (2026-10-30, internal)
+
+- Version-aware templates: Fabric 1.20.1/1.21.1 (fabric-loom-remap, Mojang mappings), NeoForge 1.21.1
+  (ModDevGradle 2.0.148), Forge 1.21.1 (ForgeGradle 7) and Forge 1.20.1 (ForgeGradle 6, reobf), taken
+  from the official example mods/MDKs. All five built in a sandboxed official Gradle image and loaded on
+  a real server (`mcat test mod`). Fabric Loom 1.19 needs JVM 25 to run Gradle even for 1.20.1.
+- Compatibility registry `moddev/compatibility.json` (+ `mcat mod matrix`): every combination MCAT built
+  and ran, with dates, toolchains, images and evidence. `VERIFIED_BUILDS` / `RUNTIME_VERIFIED` derive
+  from it; anything absent is unverified.
+- `mcat mod build --sandbox`: Gradle in `gradle:<ver>-jdk<n>` with a per-image cache; builds sharing a
+  cache are serialised with a host lock (two concurrent containers corrupted the cache otherwise).
+- Migration planning (real pack: Create: Astralization, 209 entries):
+  - target-filtered CurseForge fetch + bounded concurrent prefetch (8 workers, batch mod lookup):
+    ~10 s cold, < 1 s warm (was minutes); per-phase timings in the plan;
+  - resource/shader/data packs match on game version only (were false blockers);
+  - pins hold wherever a project is first reached (fixed a 20,000-step backtracking blow-up);
+  - a resource pack's "required" relations are advisory; a required dependency whose project has only
+    other-loader-family files is recorded in `suspect_dependencies`, not followed and not hidden;
+  - cross-provider identity check in plans (caught a real CurseForge/Modrinth CC: Tweaked duplicate);
+  - minimal change: the pack's own file is kept when it already supports the target;
+  - blocked reasons distinguish "no build" from "only alpha builds (use --allow-alpha)";
+  - `suggested_replacements` from provider search (same title ignoring loader words / same author),
+    never applied; user decisions (`--decisions`: `replace_with`, `accept_missing`, `rebuild_from`)
+    carry provenance "user";
+  - semantic adapters (`migration/adapters.py`: ftb-quests, kubejs, datapack-schema, recipes, worldgen,
+    config-keys, resource-packs) listed in the plan with the exact rules active for the version pair.
+- `migrate apply` writes the full record: inventory, plan, lockfile, transformation log (each change with
+  its origin: user id_map, cited vanilla rule or transform rule), diff, unresolved references,
+  verification report, mappings (user-approved vs automatic vs unapplied machine suggestions) and
+  ROLLBACK.md; it re-checks that the source pack is unchanged afterwards. Optional custom-mod rebuild
+  (`rebuild_from` + `--allow-build`, sandboxed).
+- Regression corpus `tests/corpus/` (synthetic, text-only) with a plan+apply test per case.
+- Tests: 183 offline; opt-in network benchmark (needs the user's ZIP) and registry re-verification.
+
 ## 0.3.0 (2026-10-30, internal)
 
 - `mcat test server|mod|client|report`: opt-in runtime verification. Servers run in a container

@@ -1,0 +1,24 @@
+{
+  "target": [
+    "26.2",
+    "fabric"
+  ],
+  "versions": [
+    [
+      "gears",
+      "g_old",
+      [
+        "1.20.1"
+      ],
+      [
+        "fabric"
+      ]
+    ]
+  ],
+  "expect": {
+    "status": "blocked",
+    "unresolved": [
+      "gears:brass_gear"
+    ]
+  }
+}

@@ -6,6 +6,54 @@ Environment (2026-10-30): Arch Linux (CachyOS kernel 7.3), Hyprland, uv 0.13.5, 
 3.13.16 / 3.14.8, Temurin JDK 25.0.4.1, Gradle 9.8.1, GNOME Keyring (Secret Service) holding a
 CurseForge API key, Go 1.27.1, Docker 29.9.2 (rootful daemon). No Modrinth token. No podman, no Xvfb.
 
+## v0.4.0
+
+| What | Outcome |
+| --- | --- |
+| `uv run pytest` / ruff / mypy | 183 passed (incl. 5 corpus cases) / clean / no issues in 51 files |
+| `uv run pytest -m network -k astralization` (user's ZIP + CurseForge key) | 3 passed |
+| `MCAT_RUN_BUILD_TESTS=1 MCAT_RUN_RUNTIME_TESTS=1 pytest -m "build and runtime" -k "forge-1.20.1 or neoforge-1.21.1"` | 2 passed (218 s): fresh scaffold, sandboxed build, mod loaded on a server |
+| Wheel/sdist 0.4.0, clean-venv install, `scripts/smoke_installed.py`, `mcat mod matrix` from the wheel | pass |
+| Exact-key scan (repo, MCAT cache, session scratch: 36,091 files) | 0 files contain the CurseForge key |
+| Template builds, `mcat mod build --sandbox` (Docker 29.9.2) | fabric 1.20.1 + 1.21.1 (`gradle:9.8.2-jdk25`), neoforge 1.21.1 (`9.2.1-jdk21`), forge 1.21.1 (`9.3.1-jdk21`), forge 1.20.1 (`8.8-jdk17`): all `success` |
+| First Fabric attempt | failed: "Dependency requires at least JVM runtime version 25" (Loom 1.19) -> `build_jdk` 25 |
+| Two concurrent builds sharing one cache | fabric 1.20.1 failed (Gradle cache lock across containers) -> host-side lock; rebuilt OK |
+| `mcat test mod <jar> --accept-eula` (fabric with a fabric-api pack) | all five `success`: READY in 30.9 s (fabric 1.20.1, Java 17), 35.9 s (forge 1.20.1, Java 17), 15.8 s (fabric 1.21.1), 11.9 s (neoforge 21.1.265), 12.6 s (forge 52.1.20); mod reported loaded; exit 0 |
+
+### Create: Astralization benchmark (real ZIP, sha256 a847d4dc..., not committed)
+
+Source: 1.20.1 Forge 47.4.10, 209 entries (208 CurseForge + 1 Modrinth-identified embedded jar), 7 quest
+chapters / 202 quests, 18 KubeJS scripts. The ZIP's sha256 was identical before and after every run.
+
+| Target | Mods (action/state) | Lock | Create | Quests/KubeJS | Apply |
+| --- | --- | --- | --- | --- | --- |
+| **A: Fabric 26.2** | 147 blocked, 61 upgrade, 1 retain | 66 mods | blocked (no Fabric 26.2 file) | blocked | `blocked`; 910 references to blocked mods; quest graph of the transformed chapter preserved |
+| **B: NeoForge 1.21.1** | 173 upgrade, 31 blocked, 5 retain | 189 mods, 9 manual downloads, 1 suspect dependency | proposed (6.x for NeoForge 1.21.1) | unverified (available; needs play-test) | `blocked`; 10 unresolved refs (all `computercraft:*`); 146 identifiers in namespaces MCAT could not attribute (slug-inferred ids, unverified) |
+| Control: Forge 1.20.1 | 202 retain, 6 upgrade, 1 replace | 212 mods, 11 manual downloads | verified (same file) | unverified | - |
+| Forge 1.21.1 / Fabric 1.21.1 / NeoForge 26.2 | 145 / 112 / 133 blocked | none | blocked | blocked | - |
+
+Scenario B is the most feasible target but is **not** feasible without decisions: of its 31 blockers, 12
+have same-title/same-author candidates on the target (all YUNG's mods ship NeoForge 1.21.1 as separate
+CurseForge projects), CC: Tweaked has only alpha builds for NeoForge 1.21.1, and 18 have no target build.
+None of these suggestions was approved or applied. Nothing was launched for the migrated pack.
+
+The control (same target) reproduces the v0.2 validation results exactly: the 6 "upgrades" are the 6 files
+CurseForge tags for another loader/version, the one added dependency is `sodium-options-api`, and the 11
+manual downloads match. It also exposed and verified fixes for:
+- resource packs blocked for having no loader tag (39 -> 31 blockers in B);
+- a pinned version overridden when reached as a dependency first (20,000-step search blow-up, no lock);
+- `create-escalated` declaring a required dependency on `create-fabric` (no Forge/NeoForge files): now a
+  recorded `suspect_dependencies` entry and a `dependency-metadata-suspect` warning;
+- a CurseForge (1.113.1) and a Modrinth (1.120.2) CC: Tweaked in the same lock: now a `duplicate-project`
+  problem with sha1 evidence. Resolved in the benchmark with a decisions file **written by the agent as a
+  test fixture**, not by the pack owner.
+
+Performance: Scenario A plan 11.3 s cold (9.2 s provider prefetch, 209 projects, 8 workers) vs minutes
+before; warm cache 0.6-0.7 s; `apply` 0.5 s.
+
+Not verified in v0.4: running any migrated pack (B has unresolved blockers); quests/KubeJS behaviour in
+game; client side; Quilt; NeoForge 1.20.1 (no template); rootless Podman.
+
 ## v0.3.0
 
 | What | Outcome |
@@ -73,5 +121,5 @@ world generation beyond the spawn area; multiplayer joins.
 | `codex exec` workflow run | blocked: Codex account usage limit |
 
 ## Still not verified (all versions)
-- Any mod loading in a running game, server or client (v0.3 target).
-- Templates other than 26.2; migrations to real targets with the Astralization pack (v0.4 target).
+- Client-side loading/rendering (no account-free launch).
+- Any migrated pack in a running game (v0.4 stops at blocked plans with explicit decisions pending).

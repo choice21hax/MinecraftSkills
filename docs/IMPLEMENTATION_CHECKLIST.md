@@ -62,8 +62,28 @@ v0.4 versions + real migration -> v1.0 distribution. Evidence for every [x] is i
 - [x] Runtime tests opt-in (`-m runtime`, `MCAT_RUN_RUNTIME_TESTS=1`); excluded from CI by default
 
 ## v0.4: broader versions and real migration
-- [ ] Version-aware templates (1.20.1, 1.21.1), compatibility registry, Astralization scenarios A/B,
-      semantic adapters, regression corpus
+- [x] Template families per toolchain era: fabric/remap (1.20.1, 1.21.1), neoforge/mdg1211, forge/fg7
+      (1.21.1), forge/fg6 (1.20.1), plus the 26.x families; per-version variables (e.g. ResourceLocation)
+- [x] All five legacy combinations build-verified (sandboxed official Gradle images) and
+      runtime-verified (`mcat test mod`, server READY + mod listed)
+- [x] Compatibility registry with provenance, dates, toolchains, images (`compatibility.json`,
+      `mcat mod matrix`); absence = unverified; `not_verified` lists known gaps
+- [x] `mod build --sandbox` with per-image cache and a host lock for concurrent builds
+- [x] Scenario A (Fabric 26.2): blocked, every blocker with a reason; quests/KubeJS mechanics blocked
+- [~] Scenario B (NeoForge 1.21.1): verified as the most feasible target (lock of 189 mods) but still
+      blocked by 31 mods; 12 have replacement suggestions awaiting the user's approval; not launched
+- [x] Same-target control reproduces v0.2 validation; four resolver/planner bugs found and fixed
+- [x] Semantic adapters with active rules per version pair (FTB Quests, KubeJS, datapack schema, recipes,
+      worldgen, config keys, resource packs); config keys and resource packs are copy-only by design
+- [x] Migration outputs: inventory, plan, lockfile, transformation log with origins, diff, unresolved
+      references, verification report, mappings (user vs automatic vs suggestions), ROLLBACK.md;
+      source immutability re-checked after apply
+- [x] User decisions (`--decisions`) separated from machine suggestions (`suggested_replacements`)
+- [~] Custom-mod rebuild (`rebuild_from` + `--allow-build`): gating tested; not executed on a real
+      custom mod from a real pack (the benchmark pack has none with available source)
+- [x] Regression corpus (`tests/corpus/`, synthetic text-only, 5 cases)
+- [x] Performance: bounded concurrent prefetch + batch lookups; per-phase timings in plans
+- [ ] NeoForge 1.20.1 and Quilt templates (listed as not verified)
 
 ## v1.0: distribution
 - [ ] Licensing recommendation, reproducible packaging, `doctor` expansion, docs, release validation
@@ -92,17 +112,17 @@ v0.4 versions + real migration -> v1.0 distribution. Evidence for every [x] is i
 - [x] Loader catalog from Mojang / Fabric meta / NeoForge maven / Forge maven + promotions
 - [x] Fabric, NeoForge, Forge templates for 26.x; **26.2 compiled with real Gradle for all three**
 - [~] Other 26.x versions: template applies but needs `--allow-unverified` until built
-- [ ] Templates for <= 1.21.11 (obfuscated era, different toolchains): planned for v0.4
+- [x] Templates for 1.20.1 and 1.21.1 (v0.4); other pre-26 versions still need `--allow-unverified`
 - [ ] Kotlin: blocked with an explicit message (no verified template)
 
 ### M3: Migration and debugging
 - [x] Phase 1-5 migration workflow (see v0.1 notes in verification.md)
-- [ ] Rebuilding custom source-available mods inside a migration (v0.4)
-- [ ] Runtime (server/client) launch tests (v0.3)
+- [~] Rebuilding custom source-available mods inside a migration (v0.4: hook + gating, see above)
+- [x] Runtime server launch tests (v0.3); client: manual checklist only
 - [x] Debug analyzer with confidence levels, pack cross-check, reversible quarantine repairs
 
 ### M4: Benchmark (Create: Astralization -> Fabric 26.2)
 - [x] Real ZIP now available locally (not committed); `inspect` and `validate --online` run on it (v0.2)
 - [x] Verified blocker: Create has no Fabric 26.2 build
-- [ ] Full scenario A/B runs: v0.4
+- [x] Scenario A/B plan + apply runs on the real pack (v0.4; see verification.md)
 - [ ] Workflow comparison in Codex: blocked by the Codex account usage limit (v0.1 session)

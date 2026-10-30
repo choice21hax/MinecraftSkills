@@ -51,6 +51,9 @@ class Resolution:
     edges: list[tuple[str, str, str]] = field(default_factory=list)  # (from, to, kind)
     cycles: list[list[str]] = field(default_factory=list)
     optional_skipped: list[str] = field(default_factory=list)
+    # Required dependencies not followed because the provider's own data shows they cannot apply to
+    # this loader (e.g. a NeoForge file "requiring" a Fabric-only project). Never hidden: reported + locked.
+    suspect_dependencies: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -69,8 +72,19 @@ class Request:
     optional: bool = False
 
 
+# Modrinth tags resource/shader/data packs with these instead of a mod loader.
+LOADER_AGNOSTIC = {"minecraft", "iris", "optifine", "canvas", "vanilla", "datapack"}
+
+
+def loader_ok(v: ModVersion, loader: str) -> bool:
+    """Mods must match the loader; packs (resource/shader/data) only need the game version."""
+    if v.project_type != "mod":
+        return True
+    return bool(set(v.loaders) & LOADER_COMPAT[loader]) or (bool(v.loaders) and set(v.loaders) <= LOADER_AGNOSTIC)
+
+
 def compatible(v: ModVersion, minecraft: str, loader: str, channels: list[str]) -> bool:
-    return minecraft in v.game_versions and bool(set(v.loaders) & LOADER_COMPAT[loader]) and v.channel in channels
+    return minecraft in v.game_versions and loader_ok(v, loader) and v.channel in channels
 
 
 def _order(vs: list[ModVersion]) -> list[ModVersion]:
@@ -88,14 +102,17 @@ class Resolver:
         include_optional: bool = False,
         exclude: list[str] | None = None,
         fetch_version: Callable[[str, str], ModVersion | None] | None = None,
+        dependency_check: Callable[[str, str], str | None] | None = None,
     ):
         self.fetch = fetch
+        self.dependency_check = dependency_check
         self.fetch_version = fetch_version
         self.minecraft, self.loader, self.channels = minecraft, loader, channels
         self.include_optional = include_optional
         self.exclude = set(exclude or [])
         self._cache: dict[tuple[str, str], list[ModVersion]] = {}
         self._steps = 0
+        self._pins: dict[tuple[str, str], str] = {}
 
     def all_versions(self, provider: str, project: str) -> list[ModVersion]:
         key = (provider, project)
@@ -127,6 +144,8 @@ class Resolver:
 
     def resolve(self, requests: list[Request]) -> Resolution:
         res = Resolution()
+        # A pinned request governs the project wherever it is first reached (often as another mod's dependency).
+        self._pins = {(r.provider, r.project): r.version for r in requests if r.version}
         # Canonical keys: provider:project_id (slugs are normalised after the first fetch).
         pending: list[tuple[str, str, str | None, str, Request | None]] = [
             (r.provider, r.project, r.version, "requested", r) for r in requests
@@ -167,6 +186,7 @@ class Resolver:
                 sel.optional and (req is None or req.optional) and reason == "requested",
             )
             return self._solve(rest, {**chosen, key: updated}, res)
+        pin = pin or self._pins.get((provider, project))
         cands = self.candidates(provider, project, pin)
         if self._is_excluded(cands[0] if cands else None, project):
             res.problems.append(Problem("excluded", project, f"{project} is excluded but needed ({reason})"))
@@ -195,6 +215,10 @@ class Resolver:
             nxt[key] = sel
             deps = []
             for d in cand.dependencies:
+                if d.kind == DepKind.REQUIRED and cand.project_type != "mod" and d.project_id:
+                    # the game never enforces a resource/shader/data pack's "requirements": advisory only
+                    res.optional_skipped.append(f"{cand.slug} -> {d.project_id} (advisory: {cand.project_type})")
+                    continue
                 if d.kind == DepKind.REQUIRED or (d.kind == DepKind.OPTIONAL and self.include_optional):
                     if d.project_id is None and d.version_id is None:
                         continue
@@ -203,6 +227,14 @@ class Resolver:
                         local_problems.append(
                             Problem("unavailable", cand.slug, f"dependency version {d.version_id} could not be found")
                         )
+                        continue
+                    suspect = self.dependency_check(provider, dep_project) if self.dependency_check else None
+                    if suspect:
+                        entry = {"from": f"{provider}:{cand.project_id}", "to": f"{provider}:{dep_project}"}
+                        if not any(
+                            x["from"] == entry["from"] and x["to"] == entry["to"] for x in res.suspect_dependencies
+                        ):
+                            res.suspect_dependencies.append({**entry, "reason": suspect})
                         continue
                     deps.append((provider, dep_project, d.version_id, f"dependency of {cand.slug}", None))
                 elif d.kind == DepKind.OPTIONAL and d.project_id:
@@ -337,5 +369,8 @@ def lock_dict(
         "mods": mods,
         "restrictions": restrictions,
         "unlicensed_or_unknown": sorted(m["key"] for m in mods if not m["license"]),
+        "suspect_dependencies": sorted(
+            (x for x in res.suspect_dependencies if x["from"] in res.selected), key=lambda x: (x["from"], x["to"])
+        ),
         "graph": {"edges": sorted(list(e) for e in res.edges), "cycles": res.cycles},
     }

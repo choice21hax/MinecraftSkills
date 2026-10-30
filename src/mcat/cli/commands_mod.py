@@ -14,6 +14,7 @@ from mcat.models import LOADERS
 from mcat.providers.http import NetworkError
 from mcat.reporting import Evidence, Finding, Result, Severity, VerificationState
 from mcat.security.archive import UnsafeArchiveError
+from mcat.validation.runtime.sandbox import SandboxUnavailable
 
 
 def mod_versions(args: argparse.Namespace) -> Result:
@@ -46,6 +47,29 @@ def mod_versions(args: argparse.Namespace) -> Result:
         r.block(f"upstream supports it, but MCAT has no template for {args.loader} {args.minecraft}")
     elif not r.data["template"]["verified"]:
         r.degrade("template family applies but has not been build-verified for this exact version")
+    return r
+
+
+def mod_matrix(args: argparse.Namespace) -> Result:
+    """The compatibility registry: which loader/version templates were built and run, when and how."""
+    reg = moddev.load_registry()
+    r = Result("mod.matrix", summary=f"{len(reg['entries'])} executed combination(s)")
+    r.data = {
+        "combinations": [
+            {
+                "loader": e["loader"],
+                "minecraft": e["minecraft"],
+                "family": e["family"],
+                "loader_version": e["loader_version"],
+                "build_verified": e.get("build"),
+                "runtime_verified": e.get("runtime"),
+                "template_source": e["source"],
+            }
+            for e in reg["entries"]
+        ],
+        "not_verified": reg.get("not_verified", []),
+        "note": "anything not listed is unverified; `mcat mod versions` checks upstream availability live",
+    }
     return r
 
 
@@ -103,7 +127,10 @@ def mod_build(args: argparse.Namespace) -> Result:
         )
         return r
     try:
-        out = moddev.run_build(project, task=args.task, timeout=args.timeout)
+        out = moddev.run_build(project, task=args.task, timeout=args.timeout, sandbox=args.sandbox, engine=args.engine)
+    except SandboxUnavailable as e:
+        r.block(f"--sandbox needs a container engine: {e}")
+        return r
     except moddev.ScaffoldError as e:
         r.block(str(e))
         return r
@@ -176,6 +203,7 @@ def register(sub: argparse._SubParsersAction, cmd: Any) -> None:
     p = cmd(msub, "versions", mod_versions, "report loader/Java/template support for a game version")
     p.add_argument("--loader", choices=LOADERS, required=True)
     p.add_argument("--minecraft", required=True)
+    cmd(msub, "matrix", mod_matrix, "show the compatibility registry (combinations MCAT built and ran)")
 
     p = cmd(msub, "init", mod_init, "scaffold a loader-specific mod project")
     p.add_argument("--loader", choices=LOADERS, required=True)
@@ -197,6 +225,12 @@ def register(sub: argparse._SubParsersAction, cmd: Any) -> None:
     p.add_argument("--task", default="build")
     p.add_argument("--timeout", type=int, default=1800)
     p.add_argument("--allow-build", action="store_true", help="authorise running Gradle (executes build scripts)")
+    p.add_argument(
+        "--sandbox",
+        action="store_true",
+        help="build inside the official Gradle image for this template (right JDK/Gradle, isolated from your files)",
+    )
+    p.add_argument("--engine", choices=["podman", "docker"])
 
     p = cmd(sub, "debug", debug_cmd, "analyze a crash report or latest.log")
     p.add_argument("log")

@@ -1,0 +1,9 @@
+{
+	id: "0000000000000A01"
+	filename: "start"
+	quests: [
+		{ id: "0000000000000001", tasks: [{ id: "0000000000000101", type: "item", item: "minecraft:grass" }] }
+		{ id: "0000000000000002", dependencies: ["0000000000000001"], tasks: [{ id: "0000000000000102", type: "item", item: "gears:brass_gear" }] }
+		{ id: "0000000000000003", dependencies: ["0000000000000002", "0000000000000001"], rewards: [{ id: "0000000000000103", type: "item", item: { id: "minecraft:scute", count: 2 } }] }
+	]
+}

@@ -132,7 +132,15 @@ class ContainerRunner:
         return p.stdout.strip() or self.image, pulled
 
     def argv(
-        self, workspace: Path, command: list[str], *, name: str, network: bool, workdir: str = "/work"
+        self,
+        workspace: Path,
+        command: list[str],
+        *,
+        name: str,
+        network: bool,
+        workdir: str = "/work",
+        extra_volumes: dict[Path, str] | None = None,  # host dir -> container path (MCAT-owned caches only)
+        extra_env: dict[str, str] | None = None,
     ) -> list[str]:
         lim = self.limits
         args = [
@@ -170,6 +178,10 @@ class ContainerRunner:
             "--workdir",
             workdir,
         ]
+        for host, target in (extra_volumes or {}).items():
+            args += ["--volume", f"{host.resolve()}:{target}:rw"]
+        for k, val in (extra_env or {}).items():
+            args += ["--env", f"{k}={val}"]
         if self.info.engine == "podman" and self.info.rootless:
             args += ["--userns", "keep-id"]
         return [*args, self.image, *command]
@@ -205,7 +217,15 @@ class HostRunner:
     java: str
 
     def argv(
-        self, workspace: Path, command: list[str], *, name: str, network: bool, workdir: str = "/work"
+        self,
+        workspace: Path,
+        command: list[str],
+        *,
+        name: str,
+        network: bool,
+        workdir: str = "/work",
+        extra_volumes: dict[Path, str] | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> list[str]:
         if command and command[0] == "java":
             command = [self.java, *command[1:]]

@@ -111,16 +111,35 @@ def _check_lock(src: PackSource, pack: PackInfo, r: Result) -> None:
                         state=VerificationState.FAILED,
                     )
                 )
-    # dependency closure recorded at resolve time: catches hand-edited packs before any launch
+    _check_lock_closure(lock, r)
+
+
+def _check_lock_closure(lock: dict[str, Any], r: Result) -> None:
+    """Dependency closure recorded at resolve time: catches hand-edited packs before any launch."""
     present = {(m["provider"], m["project_id"]) for m in lock.get("mods", [])}
     present |= {
         (eq.split(":", 1)[0], eq.split(":", 1)[1].split("/", 1)[0])
         for m in lock.get("mods", [])
         for eq in m.get("equivalents", [])
     }
+    suspect = {(x["from"], x["to"]): x["reason"] for x in lock.get("suspect_dependencies", [])}
     for m in lock.get("mods", []):
         for d in m.get("dependencies", []):
             if d.get("kind") == "required" and d.get("project_id") and (m["provider"], d["project_id"]) not in present:
+                why = suspect.get((m["key"], f"{m['provider']}:{d['project_id']}"))
+                if why:  # recorded at resolve time with its evidence; still needs a runtime check
+                    r.add(
+                        Finding(
+                            "dependency-metadata-suspect",
+                            f"{m['slug']}: {why}",
+                            Severity.WARNING,
+                            confidence="probable",
+                            state=VerificationState.UNVERIFIED,
+                            subject=m["slug"],
+                            evidence=[Evidence(f"{m['provider']}:version/{m['version_id']}")],
+                        )
+                    )
+                    continue
                 r.add(
                     Finding(
                         "lock-dependency-missing",

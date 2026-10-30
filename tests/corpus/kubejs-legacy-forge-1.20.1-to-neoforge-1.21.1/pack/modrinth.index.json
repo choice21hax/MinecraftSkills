@@ -1,0 +1,26 @@
+{
+ "formatVersion": 1,
+ "game": "minecraft",
+ "versionId": "1.0",
+ "name": "Scripts",
+ "dependencies": {
+  "minecraft": "1.20.1",
+  "forge": "47.4.0"
+ },
+ "files": [
+  {
+   "path": "mods/kubejs.jar",
+   "hashes": {
+    "sha1": "k_oldk_oldk_oldk_oldk_oldk_oldk_oldk_old"
+   },
+   "env": {
+    "client": "required",
+    "server": "required"
+   },
+   "downloads": [
+    "https://cdn.modrinth.com/data/kubejs/versions/k_old/kubejs.jar"
+   ],
+   "fileSize": 1
+  }
+ ]
+}

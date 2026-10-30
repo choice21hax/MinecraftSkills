@@ -1,0 +1,21 @@
+{
+  "target": [
+    "1.21.1",
+    "fabric"
+  ],
+  "versions": [],
+  "expect": {
+    "status": "partial",
+    "exists": [
+      "pack/datapacks/extra/data/extra/loot_table/chests/box.json"
+    ],
+    "files": {
+      "pack/datapacks/extra/data/extra/tags/item/shiny.json": {
+        "values": [
+          "minecraft:chain"
+        ]
+      }
+    },
+    "unresolved": []
+  }
+}

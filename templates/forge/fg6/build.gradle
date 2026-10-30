@@ -1,0 +1,42 @@
+plugins {
+    id 'net.minecraftforge.gradle' version '{{forgegradle_version}}'
+}
+
+version = '{{mod_version}}'
+group = '{{group}}'
+
+base {
+    archivesName = '{{mod_id}}'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of({{java_version}})
+
+minecraft {
+    mappings channel: 'official', version: '{{minecraft_version}}'
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            mods {
+                "{{mod_id}}" {
+                    source sourceSets.main
+                }
+            }
+        }
+        client {}
+        server {
+            args '--nogui'
+        }
+    }
+}
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:{{minecraft_version}}-{{forge_version}}'
+}
+
+tasks.named('jar', Jar).configure {
+    finalizedBy 'reobfJar'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

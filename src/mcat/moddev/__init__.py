@@ -8,13 +8,17 @@ family are reported unsupported rather than approximated.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 from mcat.loaders import LoaderCatalog
 from mcat.providers.modrinth import ModrinthProvider
@@ -29,34 +33,107 @@ PACKAGE_RE = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)+$")
 class TemplateFamily:
     loader: str
     name: str  # directory under templates/<loader>/
-    applies: tuple[str, ...]  # game version prefixes the family targets (Mojang-named 26.x era)
+    applies: tuple[str, ...]  # exact game versions, or prefixes ending in "." (e.g. "26.")
     pins: dict[str, str] = field(default_factory=dict)  # plugin versions taken from official templates
+    gradle: str = ""  # Gradle version of the official template's wrapper (used for sandboxed builds)
+    per_version: dict[str, dict[str, str]] = field(default_factory=dict)  # version-specific variables
+    source: str = ""  # the official template the pins were taken from
+    build_jdk: int = 0  # minimum JDK to *run* the toolchain (0 = the game's Java); javac still targets the game
+
+    def matches(self, minecraft: str) -> bool:
+        return any(minecraft.startswith(a) if a.endswith(".") else minecraft == a for a in self.applies)
 
 
-# Plugin pins copied from the official templates (FabricMC/fabric-example-mod 26.2 branch,
-# NeoForgeMDKs/MDK-26.2-ModDevGradle, Forge 26.2-65.1.5 MDK) on 2026-10-30.
-FAMILIES = {
-    "fabric": TemplateFamily("fabric", "mc26", ("26.",), {"loom_version": "1.19-SNAPSHOT"}),
-    "neoforge": TemplateFamily("neoforge", "mc26", ("26.",), {"mdg_version": "2.0.148"}),
-    "forge": TemplateFamily(
-        "forge", "mc26", ("26.",), {"forgegradle_version": "[7.0.17,8)", "eventbus_validator_version": "7.0.5"}
+# Pins copied from the official templates on 2026-10-30. Older versions use separate families because
+# their toolchains differ (Loom remap + Mojang mappings, ForgeGradle 6/7, ModDevGradle on 1.21.1) and
+# their registry APIs differ (no Properties#setId before 1.21.2).
+FAMILY_LIST: tuple[TemplateFamily, ...] = (
+    TemplateFamily(
+        "fabric",
+        "mc26",
+        ("26.",),
+        {"loom_version": "1.19-SNAPSHOT"},
+        "9.8.2",
+        source="FabricMC/fabric-example-mod (26.2 branch)",
     ),
-}
+    TemplateFamily(
+        "fabric",
+        "remap",
+        ("1.20.1", "1.21.1"),
+        {"loom_version": "1.19-SNAPSHOT"},
+        "9.8.2",
+        per_version={
+            "1.20.1": {"resource_location": "new ResourceLocation(MOD_ID, path)"},
+            "1.21.1": {"resource_location": "ResourceLocation.fromNamespaceAndPath(MOD_ID, path)"},
+        },
+        source="FabricMC/fabric-example-mod branches 1.20 / 1.21 (fabric-loom-remap, official Mojang mappings)",
+        build_jdk=25,  # Loom 1.19 requires JVM 25 (observed: "Dependency requires at least JVM runtime version 25")
+    ),
+    TemplateFamily(
+        "neoforge", "mc26", ("26.",), {"mdg_version": "2.0.148"}, "9.8.2", source="NeoForgeMDKs/MDK-26.2-ModDevGradle"
+    ),
+    TemplateFamily(
+        "neoforge",
+        "mdg1211",
+        ("1.21.1",),
+        {"mdg_version": "2.0.148"},
+        "9.2.1",
+        source="NeoForgeMDKs/MDK-1.21.1-ModDevGradle",
+    ),
+    TemplateFamily(
+        "forge",
+        "mc26",
+        ("26.",),
+        {"forgegradle_version": "[7.0.17,8)", "eventbus_validator_version": "7.0.5"},
+        "9.8.2",
+        source="Forge 26.2-65.1.5 MDK",
+    ),
+    TemplateFamily(
+        "forge",
+        "fg7",
+        ("1.21.1",),
+        {"forgegradle_version": "[7.0.3,8)", "pack_format": "34"},
+        "9.3.1",
+        source="Forge 1.21.1-52.1.20 MDK",
+    ),
+    TemplateFamily(
+        "forge",
+        "fg6",
+        ("1.20.1",),
+        {"forgegradle_version": "[6.0,6.2)", "pack_format": "15"},
+        "8.8",
+        source="Forge 1.20.1-47.4.28 MDK",
+    ),
+)
+FAMILIES = {f"{f.loader}/{f.name}": f for f in FAMILY_LIST}
+
+
+def load_registry() -> dict[str, Any]:
+    """The compatibility registry (compatibility.json): combinations MCAT actually built and ran, with dates
+    and toolchains. Absence means unverified; nothing here is inferred from upstream metadata."""
+    data: dict[str, Any] = json.loads(resources.files("mcat.moddev").joinpath("compatibility.json").read_text())
+    return data
+
+
+def _evidence(kind: str) -> dict[tuple[str, str], str]:
+    out = {}
+    for e in load_registry()["entries"]:
+        rec = e.get(kind)
+        if rec:
+            detail = rec.get("toolchain") or f"{rec.get('image')}: {rec.get('evidence')}"
+            out[(e["loader"], e["minecraft"])] = (
+                f"{rec['date']} {kind} OK ({detail}; {e['loader']} {e['loader_version']})"
+            )
+    return out
+
 
 # (loader, game version) -> evidence of a real successful `gradle build` of a generated project.
-# Recorded by running `mcat mod init --with-examples` + `mcat mod build --allow-build` (Gradle 9.8.1,
-# Temurin JDK 25.0.4.1, Arch Linux). Compilation only: no game launch was performed.
-VERIFIED_BUILDS: dict[tuple[str, str], str] = {
-    ("fabric", "26.2"): "2026-10-30 gradle build OK (loader 0.20.1, fabric-api 0.161.0+26.2, loom 1.19-SNAPSHOT)",
-    ("neoforge", "26.2"): "2026-10-30 gradle build OK (neoforge 26.2.0.93, ModDevGradle 2.0.148)",
-    ("forge", "26.2"): "2026-10-30 gradle build OK (forge 26.2-65.1.5, ForgeGradle 7.x)",
-}
+VERIFIED_BUILDS: dict[tuple[str, str], str] = _evidence("build")
 # Combinations whose generated mod was also loaded on a real dedicated server (`mcat test mod`).
-RUNTIME_VERIFIED: dict[tuple[str, str], str] = {
-    ("fabric", "26.2"): "2026-10-30 server READY + mod listed by Fabric Loader (with fabric-api 0.161.0+26.2)",
-    ("neoforge", "26.2"): "2026-10-30 server READY + FML 'Found valid mod file' (neoforge 26.2.0.93)",
-    ("forge", "26.2"): "2026-10-30 server READY + FML 'Found valid mod file', pack.mcmeta accepted (forge 65.1.5)",
-}
+RUNTIME_VERIFIED: dict[tuple[str, str], str] = _evidence("runtime")
+
+
+PROJECT_META = ".mcat-project.json"
 
 
 class ScaffoldError(Exception):
@@ -74,10 +151,7 @@ def templates_root() -> Path:
 
 
 def family_for(loader: str, minecraft: str) -> TemplateFamily | None:
-    fam = FAMILIES.get(loader)
-    if fam and any(minecraft.startswith(p) for p in fam.applies):
-        return fam
-    return None
+    return next((f for f in FAMILY_LIST if f.loader == loader and f.matches(minecraft)), None)
 
 
 def _next_minor(mc: str) -> str:
@@ -114,7 +188,9 @@ def plan_scaffold(
     if fam is None:
         raise ScaffoldError(
             f"no MCAT template for {loader} on Minecraft {minecraft}; templates exist for "
-            + ", ".join(f"{f.loader} {'/'.join(f.applies)}x" for f in FAMILIES.values())
+            + ", ".join(
+                f"{f.loader} {'/'.join(a + 'x' if a.endswith('.') else a for a in f.applies)}" for f in FAMILY_LIST
+            )
         )
     catalog = catalog or LoaderCatalog()
     support = catalog.support(loader, minecraft)
@@ -135,6 +211,7 @@ def plan_scaffold(
         "license": license_,
         "minecraft_next": _next_minor(minecraft),
         **fam.pins,
+        **fam.per_version.get(minecraft, {}),
     }
     evidence = [support.evidence, f"java {support.java} from Mojang version manifest"]
     loader_version = support.recommended or support.loader_versions[0]
@@ -196,6 +273,18 @@ def write_project(plan: ScaffoldPlan, out: Path, *, examples: bool = False) -> l
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(_render(f.read_text(encoding="utf-8"), v, examples), encoding="utf-8")
         written.append(target)
+    fam = FAMILIES[f"{plan.loader}/{plan.family}"]
+    meta = {
+        "loader": plan.loader,
+        "minecraft": plan.minecraft,
+        "family": plan.family,
+        "java": v["java_version"],
+        "gradle": fam.gradle,
+        "build_jdk": str(max(fam.build_jdk, int(v["java_version"]))),
+        "template_source": fam.source,
+    }
+    (out / PROJECT_META).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+    written.append(out / PROJECT_META)
     return written
 
 
@@ -231,13 +320,86 @@ def parse_build_errors(log: str) -> list[dict[str, str]]:
     return errors[:50]
 
 
-def run_build(project: Path, *, task: str = "build", timeout: int = 1800) -> BuildOutcome:
-    gradle = gradle_command(project)
-    if gradle is None:
-        raise ScaffoldError("no Gradle wrapper or `gradle` on PATH")
-    cmd = [*gradle, task, "--console=plain", "--stacktrace"]
-    env = {k: val for k, val in os.environ.items() if not k.startswith("MCAT_") or k == "MCAT_CONTACT"}
-    p = subprocess.run(cmd, cwd=project, capture_output=True, text=True, timeout=timeout, check=False, env=env)
+def build_image(project: Path) -> str:
+    """Official Gradle image matching the template's wrapper version and the target's Java."""
+    try:
+        meta = json.loads((project / PROJECT_META).read_text())
+    except (OSError, ValueError) as e:
+        raise ScaffoldError(
+            f"{PROJECT_META} missing or unreadable; sandboxed builds need an mcat-generated project"
+        ) from e
+    if not meta.get("gradle") or not meta.get("java"):
+        raise ScaffoldError(f"{PROJECT_META} lacks gradle/java")
+    # ModDevGradle/ForgeGradle 7 on Gradle 9 need a JDK >= 21 to run, Loom 1.19 needs 25 (javac --release
+    # still targets the game's Java); ForgeGradle 6 on Gradle 8.8 runs on the game's JDK 17.
+    java = int(meta.get("build_jdk") or meta["java"])
+    if int(meta["gradle"].split(".")[0]) >= 9:
+        java = max(java, 21)
+    return f"gradle:{meta['gradle']}-jdk{java}"
+
+
+@contextlib.contextmanager
+def _exclusive(lock: Path | None) -> Iterator[None]:
+    """Serialise sandboxed builds sharing one Gradle cache: Gradle's own cross-process lock handshake
+    cannot reach a build in another container (separate network namespace), so two at once corrupt it."""
+    if lock is None:
+        yield
+        return
+    try:
+        import fcntl
+    except ImportError:  # Windows: no container builds share a cache there in practice
+        yield
+        return
+    with lock.open("a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def run_build(
+    project: Path, *, task: str = "build", timeout: int = 1800, sandbox: bool = False, engine: str | None = None
+) -> BuildOutcome:
+    """Run Gradle. ``sandbox=True`` runs it in an official Gradle container (network on for dependency
+    downloads; only the project and a per-image Gradle cache mounted; no host credentials or env)."""
+    if sandbox:
+        from mcat.validation.runtime.sandbox import ContainerRunner, Limits, detect_engine
+
+        image = build_image(project)
+        runner = ContainerRunner(detect_engine(engine), image, Limits(memory_mb=6144, cpus=4, pids=4096, tmp_mb=2048))
+        runner.ensure_image()
+        cache = (
+            Path(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")))
+            / "mcat"
+            / "gradle"
+            / image.replace(":", "-")
+        )
+        cache.mkdir(parents=True, exist_ok=True)
+        gradle = ["gradle"]
+        cmd = runner.argv(
+            project,
+            [*gradle, task, "--console=plain", "--stacktrace", "--no-daemon"],
+            name=f"mcat-build-{os.getpid()}",
+            network=True,
+            extra_volumes={cache: "/gradle-home"},
+            extra_env={"GRADLE_USER_HOME": "/gradle-home"},
+        )
+        env = None
+        lock: Path | None = cache.parent / f"{cache.name}.lock"
+    else:
+        maybe = gradle_command(project)
+        if maybe is None:
+            raise ScaffoldError("no Gradle wrapper or `gradle` on PATH")
+        gradle = maybe
+        cmd = [*gradle, task, "--console=plain", "--stacktrace"]
+        env = {k: val for k, val in os.environ.items() if not k.startswith("MCAT_") or k == "MCAT_CONTACT"}
+        lock = None
+    try:
+        with _exclusive(lock):
+            p = subprocess.run(cmd, cwd=project, capture_output=True, text=True, timeout=timeout, check=False, env=env)
+    except subprocess.TimeoutExpired as e:
+        raise ScaffoldError(f"build timed out after {timeout}s") from e
     log = redact(p.stdout + "\n" + p.stderr)
     jars = sorted(str(j) for j in (project / "build" / "libs").glob("*.jar")) if p.returncode == 0 else []
     return BuildOutcome(
@@ -247,5 +409,5 @@ def run_build(project: Path, *, task: str = "build", timeout: int = 1800) -> Bui
         parse_build_errors(log) if p.returncode else [],
         jars,
         log[-6000:],
-        " ".join(gradle),
+        f"{image} (sandboxed)" if sandbox else " ".join(gradle),
     )

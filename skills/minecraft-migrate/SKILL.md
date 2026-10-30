@@ -30,14 +30,18 @@ with the user, and never overstate what was verified.
 2. **Plan**: `mcat migrate plan <source> --minecraft <target> --loader <loader> --output plan.json --json`
    Each mod gets `retain | upgrade | replace | blocked` with evidence. Plan details:
    [references/plan-format.md](references/plan-format.md).
-3. **Review with the user**: walk through `blocked` mods and every `replace` candidate. To accept a
-   replacement or supply identifier mappings, edit only `decisions` and `id_map` in plan.json
-   (see the reference). Ask before any semantically uncertain substitution.
-4. **Apply**: `mcat migrate apply plan.json --output ./migrated --json` - copies the source into a new
-   workspace, transforms recipes/tags/KubeJS/FTB Quests/JSON configs using only the mappings in the plan,
-   preserves unknown files, writes `migration-report.json` and `changes.diff`.
-5. **Verify**: `mcat validate ./migrated --json`; for custom source-available mods use the
-   `minecraft-moddev` skill to rebuild. Runtime launch tests are opt-in and need user approval.
+3. **Review with the user**: walk through `blocked` mods, their `suggested_replacements` (machine
+   guesses with a `basis`, `approved: false`) and `resolution_problems` / `provider_identity` conflicts.
+   Present suggestions as guesses. Only the user approves one: write their choices to a decisions file
+   (`replace_with`, `accept_missing`, `rebuild_from`) and re-plan with `--decisions`; put confirmed
+   identifier mappings in the plan's `id_map`. Never write a decision the user did not make.
+4. **Apply**: `mcat migrate apply plan.json --output ./migrated --json` - builds a new workspace with
+   adapters' transforms (FTB Quests, KubeJS, datapack schema, recipes, worldgen; configs and resource
+   packs copied) using only the plan's mappings, and writes inventory, plan, lockfile, transformation
+   log, diff, unresolved references, verification report, `mappings.json` and `ROLLBACK.md`.
+   `rebuild_from` decisions build custom mods only with `--allow-build` (sandboxed).
+5. **Verify**: `mcat validate ./migrated/pack --json`; then, with the user's EULA acceptance,
+   `mcat test server ./migrated/pack --accept-eula`. Gameplay/progression stays unverified until played.
 
 ## Reporting
 
@@ -45,4 +49,4 @@ Lead with the overall state, then list blocked mods/mechanics, then unverified t
 verified items. If the user wants a custom replacement mod for a blocked dependency, that is a separate
 mod-development task (`minecraft-moddev`) with its own verification.
 
-Benchmark notes (Create: Astralization -> modern Fabric): [references/benchmark.md](references/benchmark.md)
+Benchmark notes (Create: Astralization, scenarios A/B): [references/benchmark.md](references/benchmark.md)

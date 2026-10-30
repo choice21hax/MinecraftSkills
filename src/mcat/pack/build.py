@@ -58,8 +58,7 @@ def make_fetchers(
             return mr.versions(project)
         if cf is None:
             raise CurseForgeUnavailable(f"curseforge:{project} requested but no CurseForge API key is configured")
-        found = cf.versions(project, minecraft=minecraft, loader=loader) if minecraft else []
-        return found or cf.versions(project, limit=50)
+        return cf.target_versions(project, minecraft, loader)
 
     def fetch_version(provider: str, version_id: str) -> ModVersion | None:
         if provider == "modrinth":

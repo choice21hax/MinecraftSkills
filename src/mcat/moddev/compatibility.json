@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "description": "Template combinations MCAT has executed. 'build' = a generated project compiled with real Gradle; 'runtime' = its jar loaded on a real dedicated server via `mcat test mod`. Anything absent here is unverified. Evidence lives in docs/verification.md.",
+  "entries": [
+    {
+      "loader": "fabric", "minecraft": "26.2", "family": "mc26",
+      "loader_version": "0.20.1", "deps": {"fabric-api": "0.161.0+26.2"},
+      "source": "FabricMC/fabric-example-mod (26.x branch), fabric-loom 1.19-SNAPSHOT",
+      "build": {"date": "2026-10-30", "toolchain": "host Gradle 9.8.1, Temurin JDK 25.0.4.1"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:25-jre", "evidence": "server READY; mod listed by Fabric Loader (with fabric-api)"}
+    },
+    {
+      "loader": "neoforge", "minecraft": "26.2", "family": "mc26",
+      "loader_version": "26.2.0.93", "deps": {},
+      "source": "NeoForged MDK (ModDevGradle 2.0.148)",
+      "build": {"date": "2026-10-30", "toolchain": "host Gradle 9.8.1, Temurin JDK 25.0.4.1"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:25-jre", "evidence": "server READY; FML 'Found valid mod file'"}
+    },
+    {
+      "loader": "forge", "minecraft": "26.2", "family": "mc26",
+      "loader_version": "26.2-65.1.5", "deps": {},
+      "source": "MinecraftForge MDK (ForgeGradle 7.x)",
+      "build": {"date": "2026-10-30", "toolchain": "host Gradle 9.8.1, Temurin JDK 25.0.4.1"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:25-jre", "evidence": "server READY; FML 'Found valid mod file'; pack.mcmeta accepted"}
+    },
+    {
+      "loader": "fabric", "minecraft": "1.21.1", "family": "remap",
+      "loader_version": "0.20.1", "deps": {"fabric-api": "0.116.17+1.21.1"},
+      "source": "FabricMC/fabric-example-mod branch 1.21 (fabric-loom-remap 1.19-SNAPSHOT, official Mojang mappings)",
+      "build": {"date": "2026-10-30", "toolchain": "sandboxed gradle:9.8.2-jdk25 (Loom needs JVM 25)"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:21-jre", "evidence": "server READY in 15.8 s; mod listed by Fabric Loader (with fabric-api)"}
+    },
+    {
+      "loader": "neoforge", "minecraft": "1.21.1", "family": "mdg1211",
+      "loader_version": "21.1.265", "deps": {},
+      "source": "NeoForged MDK-1.21.1-ModDevGradle (ModDevGradle 2.0.148, Gradle 9.2.1)",
+      "build": {"date": "2026-10-30", "toolchain": "sandboxed gradle:9.2.1-jdk21"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:21-jre", "evidence": "server READY in 11.9 s; FML 'Found valid mod file'"}
+    },
+    {
+      "loader": "forge", "minecraft": "1.21.1", "family": "fg7",
+      "loader_version": "52.1.20", "deps": {},
+      "source": "MinecraftForge MDK 1.21.1-52.1.20 (ForgeGradle [7.0.3,8), Gradle 9.3.1)",
+      "build": {"date": "2026-10-30", "toolchain": "sandboxed gradle:9.3.1-jdk21"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:21-jre", "evidence": "server READY in 12.6 s; FML 'Found valid mod file'"}
+    },
+    {
+      "loader": "fabric", "minecraft": "1.20.1", "family": "remap",
+      "loader_version": "0.20.1", "deps": {"fabric-api": "0.92.12+1.20.1"},
+      "source": "FabricMC/fabric-example-mod branch 1.20 (fabric-loom-remap 1.19-SNAPSHOT, official Mojang mappings)",
+      "build": {"date": "2026-10-30", "toolchain": "sandboxed gradle:9.8.2-jdk25 (Loom needs JVM 25)"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:17-jre", "evidence": "server READY in 30.9 s; mod listed by Fabric Loader (with fabric-api)"}
+    },
+    {
+      "loader": "forge", "minecraft": "1.20.1", "family": "fg6",
+      "loader_version": "47.4.28", "deps": {},
+      "source": "MinecraftForge MDK 1.20.1-47.4.28 (ForgeGradle [6.0,6.2), Gradle 8.8, reobfJar)",
+      "build": {"date": "2026-10-30", "toolchain": "sandboxed gradle:8.8-jdk17"},
+      "runtime": {"date": "2026-10-30", "image": "eclipse-temurin:17-jre", "evidence": "server READY in 35.9 s; FML 'Found valid mod file'"}
+    }
+  ],
+  "not_verified": [
+    {"loader": "neoforge", "minecraft": "1.20.1", "why": "no template: NeoForge 1.20.1 is the Forge 47.1 fork; use the forge/fg6 template or port by hand"},
+    {"loader": "quilt", "minecraft": "*", "why": "no Quilt template; Fabric mods usually run on Quilt but MCAT has not executed it"}
+  ]
+}

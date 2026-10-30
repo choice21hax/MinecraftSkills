@@ -1,0 +1,38 @@
+{
+  "target": [
+    "1.21.1",
+    "neoforge"
+  ],
+  "versions": [
+    [
+      "kubejs",
+      "k_old",
+      [
+        "1.20.1"
+      ],
+      [
+        "forge"
+      ]
+    ],
+    [
+      "kubejs",
+      "k_new",
+      [
+        "1.21.1"
+      ],
+      [
+        "neoforge"
+      ]
+    ]
+  ],
+  "expect": {
+    "status": "partial",
+    "contains": {
+      "pack/kubejs/server_scripts/main.js": [
+        "ServerEvents.recipes(",
+        "'minecraft:short_grass'"
+      ]
+    },
+    "unresolved": []
+  }
+}

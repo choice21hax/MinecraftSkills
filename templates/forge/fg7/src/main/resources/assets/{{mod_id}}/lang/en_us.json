@@ -1,0 +1,7 @@
+{
+//#if examples
+	"item.{{mod_id}}.example_item": "Example Item",
+	"block.{{mod_id}}.example_block": "Example Block",
+//#endif
+	"{{mod_id}}.name": "{{mod_name}}"
+}

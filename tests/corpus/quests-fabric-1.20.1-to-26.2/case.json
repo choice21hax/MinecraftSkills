@@ -1,0 +1,72 @@
+{
+  "target": [
+    "26.2",
+    "fabric"
+  ],
+  "versions": [
+    [
+      "gears",
+      "g_old",
+      [
+        "1.20.1"
+      ],
+      [
+        "fabric"
+      ]
+    ],
+    [
+      "gears",
+      "g_new",
+      [
+        "26.2"
+      ],
+      [
+        "fabric"
+      ]
+    ],
+    [
+      "ftbquests",
+      "fq_old",
+      [
+        "1.20.1"
+      ],
+      [
+        "fabric"
+      ]
+    ],
+    [
+      "ftbquests",
+      "fq_new",
+      [
+        "26.2"
+      ],
+      [
+        "fabric"
+      ]
+    ]
+  ],
+  "expect": {
+    "status": "partial",
+    "quest_graph_preserved": true,
+    "files": {
+      "pack/kubejs/data/pack/recipe/brass.json": {
+        "result": {
+          "id": "gears:brass_gear",
+          "count": 1
+        },
+        "ingredients": [
+          "minecraft:short_grass",
+          "#c:ingots/iron"
+        ]
+      }
+    },
+    "contains": {
+      "pack/config/ftbquests/quests/chapters/start.snbt": [
+        "minecraft:short_grass",
+        "minecraft:turtle_scute",
+        "gears:brass_gear"
+      ]
+    },
+    "unresolved": []
+  }
+}

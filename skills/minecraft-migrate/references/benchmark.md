@@ -1,24 +1,23 @@
-# Benchmark: Create: Astralization -> modern Fabric
+# Benchmark: Create: Astralization (1.20.1 Forge)
 
-Status as of 2026-10-30 (verified with `mcat resolve` / Modrinth API):
+Measured 2026-10-30 on the user's own ZIP (never committed; keep it in `benchmarks/inputs/`, git-ignored).
+Details and numbers: `docs/verification.md` (v0.4.0).
 
-- Fabric, NeoForge and Forge all publish releases for Minecraft 26.2 (Fabric loader 0.20.1, Java 25).
-- **Create has no Fabric build for 26.2.** `create` on Modrinth targets Forge/NeoForge up to 1.21.1;
-  `create-fabric` stops at 1.20.1. A Create-centred pack therefore cannot be migrated to Fabric 26.2
-  without replacing its core mechanic - `mcat migrate plan` reports this as `blocked`, which is correct.
-- Create: Astralization was not found by Modrinth search; the original ZIP must be supplied.
+| Target | Result |
+| --- | --- |
+| A: Fabric 26.2 | `blocked`: 147 of 209 mods have no Fabric 26.2 build, including Create, FTB Quests and KubeJS. Correct outcome: the pack's core mechanic does not exist there. |
+| B: NeoForge 1.21.1 | most feasible target: Create 6, FTB Quests and KubeJS exist; lock of 189 mods. Still `blocked` by 31 mods: 12 have same-author NeoForge projects (YUNG's) as suggestions, CC: Tweaked has only alpha builds, 18 have no build. |
+| Control: Forge 1.20.1 | 202 files kept, matches `validate --online` findings. |
 
-## Running it when the ZIP is available
+How to run it:
 
 ```bash
-mkdir -p benchmarks/inputs && cp ~/Downloads/Create-Astralization*.zip benchmarks/inputs/   # never committed
-mcat inspect benchmarks/inputs/<zip> --json > out/astral-inventory.json
-mcat migrate plan benchmarks/inputs/<zip> --minecraft 26.2 --loader fabric -o out/astral-plan.json --json
-# review blocked mods/mechanics with the user; fill id_map/decisions only with confirmed mappings
-mcat migrate apply out/astral-plan.json --output out/astral-26.2-fabric --json
-mcat validate out/astral-26.2-fabric/pack --json
+mcat inspect benchmarks/inputs/<zip> --json
+mcat migrate plan benchmarks/inputs/<zip> --minecraft 1.21.1 --loader neoforge -o out/plan.json --json
+# show the user each blocked mod and suggestion; write ONLY their choices to decisions.json, then:
+mcat migrate plan benchmarks/inputs/<zip> --minecraft 1.21.1 --loader neoforge --decisions decisions.json -o out/plan.json --json
+mcat migrate apply out/plan.json --output out/astral-neoforge-1.21.1 --json
+mcat validate out/astral-neoforge-1.21.1/pack --json
 ```
 
-Feasible alternatives to discuss: target the newest version where Create exists on the desired loader
-(e.g. NeoForge 1.21.1), or keep Fabric 26.2 and accept that Create-dependent progression is blocked until
-Create (or an add-on ecosystem) ships for it. Report which option was chosen and what stays unverified.
+Report which target was chosen, which decisions the user made, and that gameplay is unverified.

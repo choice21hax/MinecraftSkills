@@ -48,11 +48,12 @@ mcat search "sodium" --minecraft 26.2 --loader fabric
 mcat resolve ./pack-spec.yaml -o mcat.lock.json         # exact versions + hashes + provenance
 mcat pack create ./pack-spec.yaml -o ./my-pack --mrpack ./my-pack.mrpack
 mcat validate ./my-pack [--online] [--server]
-mcat migrate plan ./old.mrpack --minecraft 26.2 --loader fabric -o plan.json
-mcat migrate apply plan.json -o ./migrated              # offline; never touches the source
+mcat migrate plan ./old.mrpack --minecraft 1.21.1 --loader neoforge -o plan.json [--decisions mine.json]
+mcat migrate apply plan.json -o ./migrated              # offline; never touches the source; writes ROLLBACK.md
+mcat mod matrix                                         # which loader/version templates were built and run
 mcat mod versions --loader neoforge --minecraft 26.2
 mcat mod init --loader fabric --minecraft 26.2 --mod-id mymod --package com.example.mymod -o ./mymod --with-examples
-mcat mod build ./mymod --allow-build
+mcat mod build ./mymod --allow-build [--sandbox]        # --sandbox: official Gradle image, nothing else mounted
 mcat debug ./logs/latest.log --pack ./instance [--apply]
 mcat test server ./my-pack --accept-eula                 # opt-in: real server in a container, no network
 mcat test mod ./build/libs/mymod.jar --loader neoforge --minecraft 26.2 --accept-eula
@@ -63,6 +64,35 @@ mcat skills install|status|uninstall|validate
 
 Pack spec format: [skills/minecraft-modpack/references/pack-spec.md](skills/minecraft-modpack/references/pack-spec.md).
 Migration plan format: [skills/minecraft-migrate/references/plan-format.md](skills/minecraft-migrate/references/plan-format.md).
+
+## Supported template combinations
+
+Built with real Gradle **and** loaded on a real dedicated server (2026-10-30; `mcat mod matrix` for
+toolchains and evidence):
+
+| Minecraft | Fabric | NeoForge | Forge |
+| --- | --- | --- | --- |
+| 26.2 | yes | yes | yes |
+| 1.21.1 | yes | yes | yes |
+| 1.20.1 | yes | no template | yes |
+
+Anything else is unverified: `mod init` refuses it unless you pass `--allow-unverified`.
+
+## Migrations
+
+`migrate plan` is read-only and reports, per mod, `retain` / `upgrade` / `replace` / `blocked` with the
+evidence. Blocked mods may get `suggested_replacements` (machine guesses, never applied). To act on one,
+put your decision in a JSON file and re-plan with `--decisions`:
+
+```json
+{"mods/cf-421850-5769971.jar": {"replace_with": "curseforge:1015100"},
+ "mods/old-thing.jar": {"accept_missing": true}}
+```
+
+`migrate apply` writes a new directory containing the pack, `inventory.json`, `plan.json`,
+`mappings.json` (your mappings vs automatic rules vs unapplied suggestions),
+`transformation-log.jsonl`, `changes.diff`, `unresolved-references.json`,
+`verification-report.json` and `ROLLBACK.md`.
 
 ## Runtime tests (opt-in)
 

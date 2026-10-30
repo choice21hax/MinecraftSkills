@@ -1,0 +1,26 @@
+{
+ "formatVersion": 1,
+ "game": "minecraft",
+ "versionId": "1.0",
+ "name": "RP",
+ "dependencies": {
+  "minecraft": "1.21.1",
+  "neoforge": "21.1.1"
+ },
+ "files": [
+  {
+   "path": "resourcepacks/tex.zip",
+   "hashes": {
+    "sha1": "t1t1t1t1t1t1t1t1t1t1t1t1t1t1t1t1t1t1t1t1"
+   },
+   "env": {
+    "client": "required",
+    "server": "unsupported"
+   },
+   "downloads": [
+    "https://cdn.modrinth.com/data/tex/versions/t1/tex.zip"
+   ],
+   "fileSize": 1
+  }
+ ]
+}

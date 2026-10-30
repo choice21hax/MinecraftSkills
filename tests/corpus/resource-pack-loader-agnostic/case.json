@@ -1,0 +1,25 @@
+{
+  "target": [
+    "1.21.1",
+    "neoforge"
+  ],
+  "versions": [
+    [
+      "tex",
+      "t1",
+      [
+        "1.21.1"
+      ],
+      [
+        "minecraft"
+      ]
+    ]
+  ],
+  "expect": {
+    "status": "partial",
+    "mod_states": {
+      "verified": 1
+    },
+    "unresolved": []
+  }
+}

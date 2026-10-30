@@ -59,7 +59,7 @@ def load_plan(path: Path) -> dict[str, Any]:
     return plan
 
 
-def apply_plan(plan_path: Path, out: Path) -> Result:
+def apply_plan(plan_path: Path, out: Path, *, allow_build: bool = False, sandbox: bool = True) -> Result:
     r = Result("migrate.apply", summary=str(out))
     try:
         plan = load_plan(plan_path)
@@ -163,6 +163,7 @@ def apply_plan(plan_path: Path, out: Path) -> Result:
                 continue
             content[new_path] = new_data
 
+    rebuilt = _rebuild_custom(plan, out, content, r, allow_build=allow_build, sandbox=sandbox)
     notes = write_packwiz(plan["lock"], out / "pack", extra_files=content)
     (out / "changes.diff").write_text("\n".join(d for d in diffs if d))
     verify = validate_path(out / "pack")
@@ -170,9 +171,14 @@ def apply_plan(plan_path: Path, out: Path) -> Result:
     report["unknown_namespace_references"] = unknown_ns
     (out / "migration-report.json").write_text(json.dumps(report, indent=2) + "\n")
     r.artifacts += [str(out / "pack"), str(out / "migration-report.json"), str(out / "changes.diff")]
+    r.artifacts += _write_bundle(out, plan, plan_path, changes, unresolved, unknown_ns, verify)
+    if snapshot_hash(source) != plan["source"]["sha256"]:  # the original pack must be immutable
+        r.fail("source pack changed during apply; this should never happen - report it")
+        return r
     if unmigrated:
         r.artifacts.append(str(out / "unmigrated"))
     r.data = {k: report[k] for k in ("overall", "counts", "mechanics", "quest_integrity", "failed_files")}
+    r.data["rebuilt_custom_mods"] = rebuilt
     r.data["unresolved_reference_count"] = len(unresolved)
     r.data["unknown_namespace_reference_count"] = len(unknown_ns)
     if unknown_ns:
@@ -234,6 +240,119 @@ def apply_plan(plan_path: Path, out: Path) -> Result:
     else:
         r.status = Status.PARTIAL  # never "success": gameplay and progression are not runtime-verified
     return r
+
+
+def _rebuild_custom(
+    plan: dict[str, Any], out: Path, content: dict[str, bytes], r: Result, *, allow_build: bool, sandbox: bool
+) -> list[dict[str, Any]]:
+    """Rebuild source-available custom mods the user pointed at (decisions[path].rebuild_from) for the target.
+
+    The project must have been scaffolded/ported for the exact target (its .mcat-project.json says so);
+    building runs third-party Gradle code, so it needs --allow-build and runs sandboxed unless told otherwise."""
+    from mcat import moddev
+
+    done: list[dict[str, Any]] = []
+    tgt = plan["target"]
+    for path, d in sorted(plan["decisions"].items()):
+        src = d.get("rebuild_from")
+        if not src:
+            continue
+        rec: dict[str, Any] = {"mod": path, "project": src, "state": "blocked"}
+        done.append(rec)
+        meta_file = Path(src) / moddev.PROJECT_META
+        try:
+            meta = json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            rec["reason"] = (
+                f"{meta_file} missing: port the source with `mcat mod init` / the minecraft-moddev skill first"
+            )
+            continue
+        if (meta.get("loader"), meta.get("minecraft")) != (tgt["loader"], tgt["minecraft"]):
+            rec["reason"] = (
+                f"project targets {meta.get('loader')} {meta.get('minecraft')}, "
+                f"plan targets {tgt['loader']} {tgt['minecraft']}"
+            )
+            continue
+        if not allow_build:
+            rec["reason"] = "building runs the project's Gradle scripts: re-run apply with --allow-build"
+            continue
+        try:
+            outcome = moddev.run_build(Path(src), sandbox=sandbox)
+        except Exception as e:  # reported per mod, never fatal (ScaffoldError, SandboxUnavailable, ...)
+            rec.update(state="failed", reason=f"{type(e).__name__}: {e}")
+            continue
+        jars = [j for j in outcome.artifacts if not j.endswith(("-sources.jar", "-dev.jar"))]
+        if not outcome.ok or not jars:
+            rec.update(state="failed", reason="build failed", errors=outcome.errors[:5])
+            continue
+        jar = Path(jars[0])
+        content[f"mods/{jar.name}"] = jar.read_bytes()
+        rec.update(
+            state="proposed", jar=f"mods/{jar.name}", toolchain=outcome.gradle, reason="built; not runtime-tested"
+        )
+        r.warnings.append(f"rebuilt {path} from {src}: run `mcat test mod` before trusting it")
+    return done
+
+
+def _write_bundle(
+    out: Path,
+    plan: dict[str, Any],
+    plan_path: Path,
+    changes: list[Change],
+    unresolved: dict[str, list[str]],
+    unknown_ns: dict[str, list[str]],
+    verify: Result,
+) -> list[str]:
+    """The reviewable record of one migration: what was there, what was decided (and by whom), what changed,
+    what is still unresolved, what was verified, and how to undo it."""
+    user_map = plan["id_map"]
+    rule_map = plan.get("vanilla_id_map", {})
+
+    def origin(rule: str, before: str) -> str:
+        if before in user_map:
+            return "user id_map"
+        if before in rule_map:
+            return f"vanilla rename rule ({plan.get('vanilla_id_map_sources', {}).get(before, 'changelog')})"
+        return f"transform rule: {rule}"
+
+    files = {
+        "inventory.json": {"source": plan["source"], **plan["inventory"]},
+        "plan.json": plan,
+        "mappings.json": {
+            "user_approved": {"id_map": user_map, "decisions": plan["decisions"]},
+            "automatic_rules": {"vanilla_id_map": rule_map, "sources": plan.get("vanilla_id_map_sources", {})},
+            "machine_suggestions_not_applied": {
+                m["path"]: m.get("suggested_replacements", []) for m in plan["mods"] if m.get("suggested_replacements")
+            },
+        },
+        "unresolved-references.json": {
+            "blocked_mod_references": unresolved,
+            "unknown_namespace_references": unknown_ns,
+        },
+        "verification-report.json": {
+            "static": verify.to_dict(),
+            "runtime": {
+                "state": "unverified",
+                "next": f"mcat test server {out / 'pack'} --accept-eula  (only if you accept the Minecraft EULA)",
+            },
+            "gameplay": {"state": "unverified", "why": "progression and recipes need a play-test"},
+        },
+    }
+    for name, data in files.items():
+        (out / name).write_text(json.dumps(data, indent=2, default=str) + "\n")
+    with (out / "transformation-log.jsonl").open("w") as fh:
+        for c in changes:
+            fh.write(json.dumps({**asdict(c), "origin": origin(c.rule, c.before)}) + "\n")
+    (out / "ROLLBACK.md").write_text(
+        "# Rolling back this migration\n\n"
+        f"- The source pack `{plan['source']['path']}` was read only (sha256 `{plan['source']['sha256']}`, "
+        "checked before and after apply). Nothing outside this directory was written.\n"
+        f"- To undo: delete `{out}`. To retry: edit `{plan_path}` (id_map / decisions) and re-run "
+        "`mcat migrate apply` into a new directory.\n"
+        "- Worlds are never touched by MCAT. Before opening an existing world with the migrated pack, copy the "
+        "world folder: loading it with different mods can permanently remove modded blocks and items.\n"
+    )
+    return [str(out / n) for n in [*files, "transformation-log.jsonl", "ROLLBACK.md"]]
 
 
 def _local_namespace(ns: str, names: list[str]) -> bool:

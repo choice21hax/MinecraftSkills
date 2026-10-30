@@ -60,6 +60,7 @@ class ModVersion:
     client_side: str = "unknown"  # required | optional | unsupported | unknown
     server_side: str = "unknown"
     license: str | None = None
+    project_type: str = "mod"  # mod | resourcepack | shader | datapack | other (loader-agnostic unless "mod")
 
     @property
     def primary_file(self) -> FileRef | None:

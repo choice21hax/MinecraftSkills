@@ -74,6 +74,22 @@ GitHub Actions layout:
 - Log text from mods is matched against fixed patterns only; readiness needs a nonce generated after
   the "Done" line, so a mod cannot fake readiness by printing text in advance.
 
+## Sandboxed builds and migrations (v0.4)
+
+- `mcat mod build --sandbox` runs Gradle in an official `gradle:<ver>-jdk<n>` image with the same
+  container hardening as `mcat test` except that the network stays on (dependency downloads). Only
+  the project directory and a per-image Gradle cache (`~/.cache/mcat/gradle/<image>`) are mounted; no
+  host environment, keyring or SSH agent. A host-side lock serialises builds sharing a cache.
+- `migrate apply` never downloads or copies mod jars into the output pack (packwiz metadata only).
+  Jars of blocked mods found inside the source pack are copied to `unmigrated/` in the user's own output
+  directory for reference; nothing is published or redistributed.
+- `rebuild_from` runs a user-named project's Gradle scripts: only with `--allow-build`, sandboxed by
+  default (`--no-sandbox` to opt out), and only if the project's `.mcat-project.json` matches the target.
+- Pack content (quests, scripts, READMEs) stays data: suspicious instruction-like text is reported in
+  `inventory.suspicious_text`, never acted on. The source pack is hashed before and after apply.
+- The Astralization benchmark ZIP is the user's copy and stays outside the repository; plans and outputs
+  live in a session scratch directory. Plans contain CurseForge file ids and public metadata only.
+
 ## Repository hygiene (v0.2 audit)
 
 - Pattern scan of the working tree and full git history for common token formats (CurseForge-style
@@ -87,8 +103,8 @@ GitHub Actions layout:
 ## Known gaps
 
 - Mod JARs are not scanned for malware (only metadata is read). Run unknown jars only in a sandbox.
-- Gradle builds run with the user's privileges once `--allow-build` is given; use a container/VM for
-  untrusted projects.
+- Host Gradle builds (without `--sandbox`) run with the user's privileges once `--allow-build` is given;
+  prefer `--sandbox` for projects you did not write. Sandboxed builds still have network access.
 - Redaction catches registered secrets and common token shapes, not arbitrary personal data in logs.
 - A dedicated secret scanner (gitleaks/trufflehog) has not been run; the v0.2 audit used pattern and
   exact-key searches.

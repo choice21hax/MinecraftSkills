@@ -18,6 +18,8 @@ API = "https://api.curseforge.com"
 GAME_ID = 432
 CLASS_MODS = 6
 CLASS_MODPACKS = 4471
+# Project classes whose files carry no loader tag (they work on any loader of the right game version).
+PROJECT_TYPES = {6: "mod", 12: "resourcepack", 6552: "shader", 6945: "datapack", 4546: "other"}
 LOADER_TYPES = {"forge": 1, "fabric": 4, "quilt": 5, "neoforge": 6}
 _LOADER_NAMES = {"Forge": "forge", "Fabric": "fabric", "Quilt": "quilt", "NeoForge": "neoforge"}
 _RELEASE = {1: "release", 2: "beta", 3: "alpha"}
@@ -107,6 +109,7 @@ def normalize_file(f: dict[str, Any], mod: dict[str, Any] | None = None) -> ModV
         dependencies=deps,
         client_side=client_side,
         server_side=server_side,
+        project_type=PROJECT_TYPES.get(int(mod.get("classId") or CLASS_MODS), "other"),
         license=None,  # CurseForge exposes no SPDX license field
     )
 
@@ -208,6 +211,16 @@ class CurseForgeProvider:
         mod = self.mod(project)
         files = self._paged(f"/v1/mods/{project}/files", params, limit=limit, ttl=1800)
         return [normalize_file(f, mod) for f in files]
+
+    def target_versions(self, project: str, minecraft: str | None, loader: str | None) -> list[ModVersion]:
+        """The target's files (server-side filters; no loader filter for loader-agnostic packs), else the
+        newest page so the caller can still explain which targets do exist."""
+        if minecraft:
+            agnostic = int(self.mod(project).get("classId") or CLASS_MODS) != CLASS_MODS
+            found = self.versions(project, minecraft=minecraft, loader=None if agnostic else loader)
+            if found:
+                return found
+        return self.versions(project, limit=50)
 
     def version(self, file_id: str, project: str | None = None) -> ModVersion:
         if project is None:

@@ -20,8 +20,10 @@ Layer B: src/mcat  (deterministic engine)
   validation/   validate.py: structural, hash, lock, jar dependency checks; --online provider checks
                 runtime/: state.py (server state machine) · sandbox.py (Podman/Docker, limits)
                           provision.py (verified installers, pack files) · server.py (orchestration)
-  migration/    rules.py (documented version boundaries) · transform.py · plan.py · apply.py
-  moddev/       template families, scaffold rendering, Gradle runner, error parsing
+  migration/    rules.py (documented version boundaries) · adapters.py (per-content adapters)
+                transform.py · plan.py · apply.py (output bundle, rollback, custom rebuild hook)
+  moddev/       template families per toolchain era, compatibility.json (executed combinations),
+                scaffold rendering, Gradle runner (host or sandboxed image), error parsing
   debug/        analyze.py: rule-based log analysis, repairs (quarantine)
   security/     archive.py · credentials.py (keyring) · redact.py
   agentskills.py  installer/validator for the skills
@@ -36,10 +38,13 @@ CI: .github/workflows/ci.yml (offline, every PR) · network.yml (live providers,
   `unify` merges byte-identical cross-provider picks) -> lock -> `write_packwiz` / `write_mrpack` ->
   `validate_path`.
 - **Migrate**: `PackSource` -> `parse_pack` + `build_inventory` -> `build_plan` (identification by
-  manifest ids or sha1, target candidates, full-graph resolve, content/mechanics states) -> user edits
-  `id_map`/`decisions` -> `apply_plan` (snapshot check, transforms, packwiz build, validation, report).
-- **Mod dev**: `plan_scaffold` (upstream versions + pinned plugin versions) -> `write_project` ->
-  `run_build` (Gradle) -> parsed errors.
+  manifest ids or sha1, concurrent target-filtered prefetch, target candidates, full-graph resolve,
+  cross-provider identity, replacement suggestions, adapters, content/mechanics states) -> user edits
+  `id_map` / passes `--decisions` -> `apply_plan` (snapshot check, adapters' transforms, optional
+  sandboxed custom rebuild, packwiz build, validation, output bundle, immutability re-check).
+- **Mod dev**: `family_for` (template family by loader + version) -> `plan_scaffold` (upstream versions +
+  pinned plugin versions + per-version variables) -> `write_project` (`.mcat-project.json`) ->
+  `run_build` (host Gradle, or `--sandbox`: official `gradle:<ver>-jdk<n>` image) -> parsed errors.
 - **Debug**: log text -> rules -> findings ranked by confidence -> optional pack cross-check/repairs.
 
 ## Decisions and deviations from the Notion spec
@@ -70,3 +75,27 @@ never used. The direction is one-way because CurseForge offers no sha1 search.
 CurseForge resolution fetches only the target's files (server-side `gameVersion`/`modLoaderType`
 filters, paginated) and falls back to the newest 50 files only to explain alternatives; large projects
 (JEI: 4,000+ files) are never fully paged.
+
+## Templates and the compatibility registry (v0.4)
+
+Templates are grouped by toolchain era, not by game version: `fabric/remap` (Loom remap plugin with
+official Mojang mappings: 1.20.1, 1.21.1), `fabric/mc26`, `neoforge/mdg1211`, `neoforge/mc26`,
+`forge/fg6` (1.20.1, reobf), `forge/fg7` (1.21.1), `forge/mc26`. Each family pins the plugin and Gradle
+versions of its official example project and the JDK Gradle itself needs (`build_jdk`; Loom 1.19 needs
+25 even when the mod targets Java 17). `moddev/compatibility.json` lists only combinations MCAT built
+and ran; `VERIFIED_BUILDS` / `RUNTIME_VERIFIED` and `mcat mod matrix` read it.
+
+## Migration decisions and provenance (v0.4)
+
+Three sources of change are kept apart in every plan and in `mappings.json`:
+1. **User-approved**: `id_map` (edited in the plan) and `decisions` (`--decisions`: `replace_with`,
+   `accept_missing`, `rebuild_from`), stamped `provenance: user`.
+2. **Automatic rules**: vanilla renames and format boundaries from `rules.py`, each citing a changelog.
+3. **Machine suggestions**: `suggested_replacements` (provider search: same title ignoring loader words,
+   same CurseForge author) with `approved: false`. They are never applied; a user copies one into
+   decisions to use it.
+
+The resolver never invents availability. Two metadata repairs are explicit and recorded: required
+relations of resource/shader/data packs are advisory (the game does not enforce them), and a required
+dependency whose CurseForge project only has files for the other loader family is listed under
+`suspect_dependencies` (and validated as `dependency-metadata-suspect`) instead of being followed.

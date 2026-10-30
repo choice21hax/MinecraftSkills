@@ -26,6 +26,16 @@ def migrate_plan(args: argparse.Namespace) -> Result:
     except CurseForgeUnavailable as e:
         cf = None
         r.warnings.append(str(e))
+    decisions: dict[str, Any] = {}
+    if args.decisions:
+        try:
+            decisions = json.loads(Path(args.decisions).read_text())
+        except (OSError, ValueError) as e:
+            r.fail(f"cannot read decisions file: {e}")
+            return r
+        if not isinstance(decisions, dict):
+            r.fail("decisions file must be a JSON object keyed by mod path")
+            return r
     try:
         plan = build_plan(
             Path(args.source),
@@ -35,6 +45,8 @@ def migrate_plan(args: argparse.Namespace) -> Result:
             curseforge=cf,
             catalog=LoaderCatalog(),
             channels=["release", "beta", "alpha"] if args.allow_alpha else ["release", "beta"],
+            decisions=decisions,
+            suggest=not args.no_suggest,
         )
     except (FileNotFoundError, PackFormatError, UnsafeArchiveError, ValueError) as e:
         r.fail(f"cannot read source pack: {e}")
@@ -53,7 +65,18 @@ def migrate_plan(args: argparse.Namespace) -> Result:
         "overall": ov,
         "target": plan["target"],
         "mods": [
-            {k: m[k] for k in ("name", "path", "action", "state", "reason", "replacement_candidates")}
+            {
+                k: m[k]
+                for k in (
+                    "name",
+                    "path",
+                    "action",
+                    "state",
+                    "reason",
+                    "replacement_candidates",
+                    "suggested_replacements",
+                )
+            }
             for m in plan["mods"]
         ],
         "content": plan["content"],
@@ -100,7 +123,7 @@ def migrate_plan(args: argparse.Namespace) -> Result:
 
 
 def migrate_apply(args: argparse.Namespace) -> Result:
-    return apply_plan(Path(args.plan), Path(args.output))
+    return apply_plan(Path(args.plan), Path(args.output), allow_build=args.allow_build, sandbox=not args.no_sandbox)
 
 
 def register(sub: argparse._SubParsersAction, cmd: Any) -> None:
@@ -113,6 +136,18 @@ def register(sub: argparse._SubParsersAction, cmd: Any) -> None:
     p.add_argument("--output", "-o", default="migration-plan.json")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--allow-alpha", action="store_true", help="consider alpha releases as targets")
+    p.add_argument(
+        "--decisions",
+        help="JSON of YOUR approved decisions keyed by mod path: "
+        '{"mods/x.jar": {"replace_with": "curseforge:123"}} or {"accept_missing": true}',
+    )
+    p.add_argument("--no-suggest", action="store_true", help="skip provider searches for replacement suggestions")
     p = cmd(msub, "apply", migrate_apply, "apply a reviewed plan into a new workspace (offline)")
     p.add_argument("plan")
     p.add_argument("--output", "-o", required=True, help="new or empty directory")
+    p.add_argument(
+        "--allow-build",
+        action="store_true",
+        help="rebuild custom mods named in decisions[...].rebuild_from (runs Gradle)",
+    )
+    p.add_argument("--no-sandbox", action="store_true", help="build custom mods on the host instead of a container")
