@@ -18,6 +18,8 @@ Layer B: src/mcat  (deterministic engine)
                 unify.py (cross-provider identity by file hash)
   pack/         build.py: resolve spec -> packwiz dir / .mrpack
   validation/   validate.py: structural, hash, lock, jar dependency checks; --online provider checks
+                runtime/: state.py (server state machine) · sandbox.py (Podman/Docker, limits)
+                          provision.py (verified installers, pack files) · server.py (orchestration)
   migration/    rules.py (documented version boundaries) · transform.py · plan.py · apply.py
   moddev/       template families, scaffold rendering, Gradle runner, error parsing
   debug/        analyze.py: rule-based log analysis, repairs (quarantine)
@@ -48,7 +50,7 @@ CI: .github/workflows/ci.yml (offline, every PR) · network.yml (live providers,
 | `providers/{modrinth,curseforge}/` packages | single modules `providers/modrinth.py`, `curseforge.py` | each is one cohesive file; packages would be empty shells |
 | `loaders/{fabric,neoforge,forge}/` packages | one `loaders/__init__.py` + per-loader template families in `templates/` and `moddev/` | loader differences are data (endpoints, templates, pins), not class hierarchies |
 | `mcat mod init` per spec | also `mcat mod versions`; build requires `--allow-build` | building executes Gradle plugins: explicit authorisation |
-| Validation of runtime | not implemented; always reported unverified | needs an isolated sandbox + user approval |
+| Validation of runtime | `mcat test` (v0.3): opt-in, containerised, EULA-gated; client runtime not automated | servers can be sandboxed and probed; clients need an account and a display |
 | Extra modules | `debug/`, `pack/` | debugging and pack building are distinct responsibilities |
 
 Version identifiers are always strings; comparisons use `resolver.versions.Version` (numeric/textual

@@ -6,6 +6,22 @@ Environment (2026-10-30): Arch Linux (CachyOS kernel 7.3), Hyprland, uv 0.13.5, 
 3.13.16 / 3.14.8, Temurin JDK 25.0.4.1, Gradle 9.8.1, GNOME Keyring (Secret Service) holding a
 CurseForge API key, Go 1.27.1, Docker 29.9.2 (rootful daemon). No Modrinth token. No podman, no Xvfb.
 
+## v0.3.0
+
+| What | Outcome |
+| --- | --- |
+| `uv run pytest` / ruff / mypy | 160 passed / clean / no issues in 50 files |
+| `MCAT_RUN_RUNTIME_TESTS=1 uv run pytest -m runtime` | 4 passed (154 s): bare Fabric/NeoForge/Forge 26.2 READY + clean stop; broken pack caught |
+| Sandbox | Docker 29.9.2 (rootful), image `eclipse-temurin:25-jre` @ sha256:ecdc0adb37bd..., Java 25.0.5 |
+| `mcat test server --loader {fabric,neoforge,forge} --minecraft 26.2 --accept-eula` | all `success`: Done in 8.8 s / 7.2 s / 7.7 s; nonce echoed; exit 0; total 43 / 49 / 59 s (install 26 / 32 / 41 s) |
+| `mcat test server` on an MCAT Fabric 26.2 pack (lithium, ferrite-core, appleskin, chunky, spark, modmenu) | `success`; 7 files hash-verified, modmenu skipped (client); Fabric Loader listed 49 mods |
+| same pack with fabric-api removed | `failed` in 1.2 s; `runtime-missing-dependency` (confirmed) for appleskin, chunky, spark; offline `validate` now also fails it (`lock-dependency-missing`) |
+| `mcat mod build` + `mcat test mod` for MCAT's 26.2 templates | Fabric, NeoForge: loaded. Forge: loaded but "Missing data pack mod:<id>" -> template fixed with MDK `pack.mcmeta`, rebuilt, re-tested: no warning |
+| `mcat test client` | `blocked` by design: no account-free launch, no Xvfb; manual checklist returned |
+
+Not verified in v0.3: rootless Podman; runtime of any 1.20.1/1.21.1 target; client rendering/gameplay;
+world generation beyond the spawn area; multiplayer joins.
+
 ## v0.2.0
 
 ### Automated checks

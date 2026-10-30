@@ -36,6 +36,7 @@ def mod_versions(args: argparse.Namespace) -> Result:
             "family": fam.name if fam else None,
             "verified": (args.loader, args.minecraft) in moddev.VERIFIED_BUILDS,
             "verification": moddev.VERIFIED_BUILDS.get((args.loader, args.minecraft)),
+            "runtime_verified": moddev.RUNTIME_VERIFIED.get((args.loader, args.minecraft)),
         },
         "languages": ["java"],
     }

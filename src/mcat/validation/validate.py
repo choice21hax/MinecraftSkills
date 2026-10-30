@@ -111,6 +111,27 @@ def _check_lock(src: PackSource, pack: PackInfo, r: Result) -> None:
                         state=VerificationState.FAILED,
                     )
                 )
+    # dependency closure recorded at resolve time: catches hand-edited packs before any launch
+    present = {(m["provider"], m["project_id"]) for m in lock.get("mods", [])}
+    present |= {
+        (eq.split(":", 1)[0], eq.split(":", 1)[1].split("/", 1)[0])
+        for m in lock.get("mods", [])
+        for eq in m.get("equivalents", [])
+    }
+    for m in lock.get("mods", []):
+        for d in m.get("dependencies", []):
+            if d.get("kind") == "required" and d.get("project_id") and (m["provider"], d["project_id"]) not in present:
+                r.add(
+                    Finding(
+                        "lock-dependency-missing",
+                        f"{m['slug']} requires {m['provider']} project {d['project_id']}, which is not in the pack",
+                        Severity.ERROR,
+                        confidence="confirmed",
+                        state=VerificationState.FAILED,
+                        subject=m["slug"],
+                        evidence=[Evidence(f"{m['provider']}:version/{m['version_id']}")],
+                    )
+                )
 
 
 def _check_jars(pack: PackInfo, r: Result) -> None:

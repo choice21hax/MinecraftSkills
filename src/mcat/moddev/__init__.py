@@ -51,6 +51,12 @@ VERIFIED_BUILDS: dict[tuple[str, str], str] = {
     ("neoforge", "26.2"): "2026-10-30 gradle build OK (neoforge 26.2.0.93, ModDevGradle 2.0.148)",
     ("forge", "26.2"): "2026-10-30 gradle build OK (forge 26.2-65.1.5, ForgeGradle 7.x)",
 }
+# Combinations whose generated mod was also loaded on a real dedicated server (`mcat test mod`).
+RUNTIME_VERIFIED: dict[tuple[str, str], str] = {
+    ("fabric", "26.2"): "2026-10-30 server READY + mod listed by Fabric Loader (with fabric-api 0.161.0+26.2)",
+    ("neoforge", "26.2"): "2026-10-30 server READY + FML 'Found valid mod file' (neoforge 26.2.0.93)",
+    ("forge", "26.2"): "2026-10-30 server READY + FML 'Found valid mod file', pack.mcmeta accepted (forge 65.1.5)",
+}
 
 
 class ScaffoldError(Exception):

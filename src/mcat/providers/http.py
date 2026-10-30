@@ -124,6 +124,12 @@ class HttpClient:
             tmp.replace(cpath)
         return data
 
+    def get_text(self, url: str, *, max_bytes: int = 1024**2) -> str:
+        """Small uncached text resource (e.g. a maven ``.sha256`` file) from an allow-listed host."""
+        if offline():
+            raise OfflineError(f"MCAT_OFFLINE=1; cannot fetch {url}")
+        return self._request("GET", url, credential=None, stream_limit=max_bytes).text
+
     def download(self, url: str, dest: Path, *, max_bytes: int = 512 * 1024**2) -> Path:
         if offline():
             raise OfflineError(f"MCAT_OFFLINE=1; cannot download {url}")

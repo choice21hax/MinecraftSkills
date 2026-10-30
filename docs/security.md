@@ -55,6 +55,25 @@ GitHub Actions layout:
   configured. The key is passed only to the test step's environment.
 - Uploaded artifacts are JUnit reports and built distributions from the secret-free workflow.
 
+## Runtime sandbox (v0.3)
+
+`mcat test` executes third-party code (loader installers, Minecraft, mods). Controls:
+- Never on the host by default. With no usable container engine the result is `blocked`; host
+  execution requires `--allow-host-execution` and is reported as unsandboxed.
+- Container: `--network none` while the server runs (network only during the loader-install step,
+  which needs the loader maven and Mojang), read-only root fs, private `/tmp` tmpfs, `--cap-drop ALL`,
+  `no-new-privileges`, invoking uid/gid, memory (= swap), CPU and pid limits, `HOME=/work/home`, no
+  inherited environment, only the run workspace bind-mounted. No credentials enter the container:
+  CurseForge downloads happen on the host before launch.
+- Installers are fetched by MCAT from official mavens and checked against the maven `.sha256`;
+  pack files must match recorded hashes; files without hashes are refused.
+- Docker's daemon here is rootful: docker-group membership is root-equivalent and a container escape
+  would reach root. Rootless Podman is preferred automatically when installed. Containers are not a
+  perfect security boundary; do not test packs from untrusted sources on machines holding secrets.
+- EULA: the server is never started unless the user passes `--accept-eula`.
+- Log text from mods is matched against fixed patterns only; readiness needs a nonce generated after
+  the "Done" line, so a mod cannot fake readiness by printing text in advance.
+
 ## Repository hygiene (v0.2 audit)
 
 - Pattern scan of the working tree and full git history for common token formats (CurseForge-style

@@ -23,8 +23,14 @@ metadata:
    required version > update/downgrade one mod > remove one mod > change Java/memory flags.
 4. Only change files after the user agrees. Never delete mods/configs outright - move them to a
    backup folder the user can restore from.
-5. Revalidate: `mcat validate <pack> --json` and ask the user to relaunch; re-run `mcat debug` on
-   the new log. Repeat until the original error is gone; report any new error separately.
+5. Revalidate: `mcat validate <pack> --json`, then reproduce in a sandbox if the user agrees:
+   `mcat test server <pack> --accept-eula --json` (starts a real dedicated server in a container with
+   no network; only pass `--accept-eula` after the user has said they accept the Minecraft EULA).
+   A failed run already includes analyzer findings (`runtime-*` codes); `mcat test report <workspace>`
+   re-reads it and prints the exact `mcat debug` command for its logs. Repeat until the original error
+   is gone; report any new error separately.
+   If the result is `blocked` because no container engine exists, say so. Never suggest
+   `--allow-host-execution` unless the user explicitly asks to run untrusted jars on their machine.
 
 ## Notes
 

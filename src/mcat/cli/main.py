@@ -90,11 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
                 "--force", action="store_true", help="replace conflicting unrelated skills (explicit approval)"
             )
 
-    from mcat.cli import commands_migrate, commands_mod, commands_pack
+    from mcat.cli import commands_migrate, commands_mod, commands_pack, commands_test
 
     commands_pack.register(sub, cmd)
     commands_migrate.register(sub, cmd)
     commands_mod.register(sub, cmd)
+    commands_test.register(sub, cmd)
     return parser
 
 

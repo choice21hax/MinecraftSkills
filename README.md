@@ -54,12 +54,23 @@ mcat mod versions --loader neoforge --minecraft 26.2
 mcat mod init --loader fabric --minecraft 26.2 --mod-id mymod --package com.example.mymod -o ./mymod --with-examples
 mcat mod build ./mymod --allow-build
 mcat debug ./logs/latest.log --pack ./instance [--apply]
+mcat test server ./my-pack --accept-eula                 # opt-in: real server in a container, no network
+mcat test mod ./build/libs/mymod.jar --loader neoforge --minecraft 26.2 --accept-eula
+mcat test report ~/.cache/mcat/runtime/<run>             # summary + crash analysis of a run
 mcat auth setup | set curseforge | set modrinth | status | test | remove curseforge
 mcat skills install|status|uninstall|validate
 ```
 
 Pack spec format: [skills/minecraft-modpack/references/pack-spec.md](skills/minecraft-modpack/references/pack-spec.md).
 Migration plan format: [skills/minecraft-migrate/references/plan-format.md](skills/minecraft-migrate/references/plan-format.md).
+
+## Runtime tests (opt-in)
+
+`mcat test` starts real dedicated servers inside a container (rootless Podman preferred, Docker
+accepted). It refuses to run without `--accept-eula` (you must accept https://aka.ms/MinecraftEULA
+yourself) and never falls back to running jars on your machine. Success means the server finished
+loading, answered a random probe command and stopped cleanly; client gameplay is not automated
+(`mcat test client` gives a manual checklist). Details: [docs/security.md](docs/security.md#runtime-sandbox-v03).
 
 ## CurseForge (optional)
 

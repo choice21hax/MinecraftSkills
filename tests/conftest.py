@@ -186,7 +186,7 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture(autouse=True)
 def _hermetic(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     """Offline tests must never reach the network or the developer's real cache/offline settings."""
-    if request.node.get_closest_marker("network") or request.node.get_closest_marker("build"):
+    if any(request.node.get_closest_marker(m) for m in ("network", "build", "runtime")):
         return
     import httpx
 

@@ -42,7 +42,24 @@ v0.4 versions + real migration -> v1.0 distribution. Evidence for every [x] is i
 - [!] gitleaks could not be installed in this session (tool install denied); a pattern scan was used
 
 ## v0.3: runtime verification
-- [ ] `mcat test server|client|mod|report`, sandbox, server smoke tests, broken-pack detection
+- [x] `src/mcat/validation/runtime/` (state, sandbox, provision, server) + `mcat test server|mod|client|report`
+- [x] Options: timeout, memory, CPUs, pids, workspace, cleanup, engine, image, no-pull, Java (host
+      mode); automatic Java check (image's `java -version` vs Mojang manifest requirement)
+- [x] Sandbox: container engine detection (Podman first), `--network none` at run time, read-only
+      root, cap-drop ALL, no-new-privileges, uid/gid, memory/swap/CPU/pid limits, explicit env, only
+      the workspace mounted; blocked (never host) when no engine; host only via `--allow-host-execution`
+- [~] Rootless Podman path implemented but not executed (Podman not installed); Docker here is rootful
+- [x] EULA: blocked without `--accept-eula`; MCAT writes `eula=true` only with it
+- [x] State machine: provisioning/starting/loading_mods/loading_world/done_logged/ready/stopping/
+      stopped/crashed/timeout/blocked; READY needs Done line + nonce round trip; clean = exit 0
+- [x] Server smoke tests, Fabric/NeoForge/Forge 26.2 (official installers, sha256-checked): all READY
+- [x] Mod test: MCAT template mods loaded on all three loaders (Fabric Loader list / FML discovery)
+- [x] Broken pack detection (fabric-api removed): crash classified `runtime-missing-dependency`
+- [x] Failure classification via the debug analyzer; `mcat test report` re-reads a workspace
+- [x] Observability: per-phase timings, state transitions with evidence, report.json per run
+- [!] Automated client launch: not offered (needs the user's Microsoft account; no Xvfb installed).
+      `mcat test client` = static validation + manual checklist, reported `blocked`
+- [x] Runtime tests opt-in (`-m runtime`, `MCAT_RUN_RUNTIME_TESTS=1`); excluded from CI by default
 
 ## v0.4: broader versions and real migration
 - [ ] Version-aware templates (1.20.1, 1.21.1), compatibility registry, Astralization scenarios A/B,

@@ -2,6 +2,23 @@
 
 Versions follow semver; nothing is published to a registry. See docs/verification.md for evidence.
 
+## 0.3.0 (2026-10-30, internal)
+
+- `mcat test server|mod|client|report`: opt-in runtime verification. Servers run in a container
+  (rootless Podman preferred, Docker accepted with a root-equivalence warning) with no network, memory/
+  CPU/pid limits, read-only root, all capabilities dropped and only the run workspace mounted. No host
+  fallback without `--allow-host-execution`; no server start without `--accept-eula`.
+- Readiness = vanilla "Done" line + a random-nonce command round trip; clean = `stop` + exit 0.
+  Failures are classified with the `minecraft-debug` analyzer (`runtime-*` findings).
+- Official installers verified against maven `.sha256`; pack files hash-verified, downloaded with
+  bounded concurrency; restricted CurseForge files block the run instead of being fetched.
+- Real results: Fabric, NeoForge, Forge 26.2 servers READY; MCAT template mods load on all three; a
+  deliberately broken pack (fabric-api removed) is caught with a confirmed missing-dependency finding.
+- Fix found at runtime: Forge 26.2 template lacked `pack.mcmeta` ("Missing data pack"); added from
+  the official 65.1.5 MDK. `RUNTIME_VERIFIED` records template combos proven on a server.
+- `validate` now checks the lockfile's dependency closure offline (`lock-dependency-missing`).
+- Tests: 160 offline; opt-in `runtime` marker (`MCAT_RUN_RUNTIME_TESTS=1`): 4 real container runs.
+
 ## 0.2.0 (2026-10-30, internal)
 
 - CI: `ci.yml` (PR + main, least privilege, SHA-pinned actions, uv cache, Python 3.12-3.14, lint, types,

@@ -162,3 +162,42 @@ def test_scaffold_compiles(loader, tmp_path):
     outcome = moddev.run_build(tmp_path / loader, timeout=1800)
     assert outcome.ok, outcome.log_tail
     assert outcome.artifacts
+
+
+_RUNTIME = pytest.mark.skipif(
+    os.environ.get("MCAT_RUN_RUNTIME_TESTS") != "1",
+    reason="starts real servers in a container and accepts the Minecraft EULA: set MCAT_RUN_RUNTIME_TESTS=1",
+)
+
+
+@pytest.mark.runtime
+@_RUNTIME
+@pytest.mark.parametrize("loader", ["fabric", "neoforge", "forge"])
+def test_runtime_bare_server_reaches_ready(loader, tmp_path):
+    from mcat.validation.runtime import RuntimeOptions, run_server_test
+
+    r = run_server_test(
+        RuntimeOptions(loader=loader, minecraft="26.2", accept_eula=True, workspace=tmp_path / "ws", cleanup=True)
+    )
+    assert r.status.value == "success", r.to_text()
+    assert r.data["server"]["final_state"] == "stopped"
+
+
+@pytest.mark.runtime
+@_RUNTIME
+def test_runtime_catches_broken_pack(tmp_path):
+    from mcat.pack.build import resolve_spec, write_packwiz
+    from mcat.resolver.spec import parse_spec
+    from mcat.validation.runtime import RuntimeOptions, run_server_test
+
+    spec = parse_spec(
+        {"name": "b", "version": "1", "minecraft": "26.2", "loader": "fabric", "mods": ["appleskin"]}, "d"
+    )
+    _, lock, _ = resolve_spec(spec)
+    lock["mods"] = [m for m in lock["mods"] if m["slug"] != "fabric-api"]  # deliberately broken
+    write_packwiz(lock, tmp_path / "pack")
+    r = run_server_test(
+        RuntimeOptions(pack=tmp_path / "pack", accept_eula=True, workspace=tmp_path / "ws", cleanup=True)
+    )
+    assert r.status.value == "failed"
+    assert any(f.code == "runtime-missing-dependency" and "fabric-api" in f.message for f in r.findings)

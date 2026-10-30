@@ -41,6 +41,12 @@ resolution, hashing, file writing). Never hand-edit lockfiles or invent versions
    `--online` re-checks every Modrinth/CurseForge entry against the provider (identity, target,
    hashes, required dependencies); entries that could not be looked up are `unverified`, not passing.
 
+7. **Runtime smoke test (opt-in)**: with the user's agreement to the Minecraft EULA,
+   `mcat test server ./out-dir --accept-eula --json` boots the pack's server side in a container
+   sandbox. `success` means: the server logged "Done", answered a random probe command and stopped with
+   exit 0. It says nothing about clients, rendering or gameplay; `mcat test client` returns a manual
+   checklist for those.
+
 Mixing providers: the lockfile's `provider_identity` lists mods selected from both Modrinth and
 CurseForge that are byte-identical (merged, with `equivalents` provenance) and `duplicate-project`
 conflicts (same project, different files). Identity comes only from file hashes, never names. Files in
