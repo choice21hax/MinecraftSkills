@@ -101,7 +101,9 @@ v0.4 versions + real migration -> v1.0 distribution. Evidence for every [x] is i
 - [x] README rewrite; CONTRIBUTING, SECURITY, versioning policy, PR/issue templates (private development)
 - [x] Release validation: `scripts/release_check.py` (22 checks) + `.github/workflows/release.yml`
       (least privilege, no publishing, opt-in network job in the `providers` environment); actionlint-clean
-- [~] Release workflow run on GitHub: not run (push not authorised); replayed locally
+- [x] CI and release workflow run on GitHub (rc2, b44bca7): both green; artifacts byte-identical to
+      the local build
+- [ ] `network.yml` / live job on GitHub: `providers` environment + secret not configured
 - [x] 14-step clean-environment UAT (`scripts/uat.py`), results in verification.md
 - [ ] Final 1.0.0: withheld; see docs/versioning.md criteria and the open items above
 

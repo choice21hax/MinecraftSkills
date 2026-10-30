@@ -19,7 +19,18 @@ Same machine and tools as v0.4.0. Nothing was pushed or published.
 | `scripts/release_check.py` | 22/22: two builds with `SOURCE_DATE_EPOCH` byte-identical (wheel + sdist), SHA256SUMS, version/`__version__`/Requires-Dist match, no jars/archives/binaries/>1 MB/token-shaped strings in either artifact, skills + templates + registry + notices in the wheel, clean-venv install, installed smoke test, `doctor --offline` reports every check, `mod matrix` 8 executed, inspect + validate (exit 3) of a corpus pack, offline `migrate plan` blocked (exit 4), uninstall |
 | `uv tool install <checkout>` (isolated HOME/tool dir) | `mcat 1.0.0rc1`; uninstall removes the executable |
 | `uv tool install git+file://<repo>` | installs the last commit (0.4.0 at the time), proving the git path; the GitHub URL itself was not tested (needs repository access from the installing machine) |
-| GitHub run of release.yml / ci.yml | **not run**: pushing was not authorised |
+| GitHub run of release.yml / ci.yml | rc1: not run (push not yet authorised); rc2: see below |
+
+### 1.0.0rc2 on GitHub (commit b44bca7, pushed with the owner's authorisation)
+
+| Run | Result |
+| --- | --- |
+| `ci` 41134042572 (push) | success: test py3.12, py3.13, py3.14; package (wheel + sdist, clean install) |
+| `release-validation` 41134068426 (manual, `network=false`) | success: release check 24/24 on the runner; live provider job skipped as designed |
+| Cross-machine reproducibility | the runner's wheel and sdist are **byte-identical** to the local build (same SHA256SUMS: wheel `7cdcf323…`, sdist `6dd5dd68…`) |
+
+The `network.yml` and opt-in live job have not run on GitHub (the `providers` environment and its
+secret are not configured). The UAT below ran on rc1; rc2 changes only license files, metadata and docs.
 
 ### Clean-environment UAT (`scripts/uat.py --build --accept-eula --codex`)
 

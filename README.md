@@ -212,8 +212,8 @@ Details: [docs/security.md](docs/security.md). Report vulnerabilities: [SECURITY
   only get identifier mapping.
 - Mod ids of CurseForge-only packs are inferred from slugs when no jar metadata is available. These
   inferences are labelled unverified.
-- Rootless Podman has not been exercised. The GitHub workflows have only been linted and replayed
-  locally, not run on GitHub.
+- Rootless Podman has not been exercised. The live-provider workflow has not run on GitHub (it
+  needs a `providers` environment with a CurseForge key); CI and release validation have.
 - Mod jars are not scanned for malware.
 
 ## Development

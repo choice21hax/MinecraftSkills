@@ -26,7 +26,7 @@ versioned separately and only change when their format does.
 ## What 1.0.0 requires
 
 1.0 is not a matter of all planned files existing. It requires:
-1. the release-validation workflow passing **on GitHub** (not only replayed locally);
+1. the release-validation workflow passing **on GitHub** (done for 1.0.0rc2);
 2. every supported combination in `mcat mod matrix` re-verified within the release cycle;
 3. at least one real-world migration taken to a running server, with its decisions made by a user;
 4. a licensing decision (docs/licensing.md) and agreement on how it is distributed (license done:
