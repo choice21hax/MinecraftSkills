@@ -1,0 +1,23 @@
+modLoader="javafml"
+loaderVersion="[{{forge_major}},)"
+license="{{license}}"
+
+[[mods]]
+modId="{{mod_id}}"
+version="{{mod_version}}"
+displayName="{{mod_name}}"
+description='''{{mod_name}}'''
+
+[[dependencies.{{mod_id}}]]
+    modId="forge"
+    mandatory=true
+    versionRange="[{{forge_major}},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.{{mod_id}}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[{{minecraft_version}},{{minecraft_next}})"
+    ordering="NONE"
+    side="BOTH"

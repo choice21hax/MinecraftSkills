@@ -1,0 +1,41 @@
+plugins {
+    id 'java'
+    id 'net.minecraftforge.gradle' version '{{forgegradle_version}}'
+}
+
+version = '{{mod_version}}'
+group = '{{group}}'
+
+base {
+    archivesName = '{{mod_id}}'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of({{java_version}})
+
+minecraft {
+    runs {
+        configureEach {
+            workingDir = layout.projectDirectory.dir('run')
+        }
+        register('client')
+        register('server') {
+            args '--nogui'
+        }
+    }
+}
+
+repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+    mavenCentral()
+}
+
+dependencies {
+    implementation minecraft.dependency('net.minecraftforge:forge:{{minecraft_version}}-{{forge_version}}')
+    annotationProcessor 'net.minecraftforge:eventbus-validator:{{eventbus_validator_version}}'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
