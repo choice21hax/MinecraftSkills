@@ -1,7 +1,7 @@
 ---
 name: minecraft-migrate
 description: Migrate a Minecraft modpack to another game version and/or loader (Fabric, NeoForge, Forge) with a five-phase inventory, plan, transform, build, verify workflow driven by the `mcat` CLI. Handles mods, configs, KubeJS scripts, recipes, tags, datapacks and FTB Quests progression, preserves unknown content and reports blockers honestly. Use when the user wants to port, update or convert an existing modpack.
-license: Proprietary (internal)
+license: Apache-2.0
 compatibility: Requires the `mcat` CLI (Minecraft Agent Toolkit) on PATH; network access to Modrinth (and CurseForge if configured) for planning.
 metadata:
   toolkit: minecraft-agent-toolkit

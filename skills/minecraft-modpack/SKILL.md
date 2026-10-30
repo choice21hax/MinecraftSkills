@@ -1,7 +1,7 @@
 ---
 name: minecraft-modpack
 description: Create, inspect, edit, resolve, validate and export Minecraft modpacks (Fabric, NeoForge, Forge) using the deterministic `mcat` CLI with Modrinth and optional CurseForge data. Use when the user wants a new modpack from requirements, wants to know what is in an .mrpack/CurseForge zip/packwiz pack, wants mods added or removed, needs dependency resolution or a lockfile, or wants to export a pack.
-license: Proprietary (internal)
+license: Apache-2.0
 compatibility: Requires the `mcat` CLI (Minecraft Agent Toolkit, Python 3.12+) on PATH; network access for Modrinth/CurseForge lookups.
 metadata:
   toolkit: minecraft-agent-toolkit

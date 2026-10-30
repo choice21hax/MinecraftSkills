@@ -4,7 +4,8 @@ Usage: uv run python scripts/release_check.py OUTDIR
 
 1. builds wheel + sdist twice (SOURCE_DATE_EPOCH = last commit time) and requires identical bytes
 2. writes SHA256SUMS
-3. checks metadata: version == mcat.__version__, Requires-Dist == pyproject dependencies, license text
+3. checks metadata: version == mcat.__version__, Requires-Dist == pyproject dependencies, Apache-2.0
+   license expression and license files
 4. scans artifacts: no jars/archives/binaries, no token-shaped strings, no files over 1 MB, skills,
    templates and compatibility registry present
 5. installs the wheel into a fresh venv, runs scripts/smoke_installed.py and minimal offline examples
@@ -111,8 +112,13 @@ def main() -> int:
         requires == sorted(pyproject["project"]["dependencies"]),
         "; ".join(requires),
     )
-    lic = next((line for line in meta.splitlines() if line.startswith("License")), "License: (none)")
-    check("license metadata present (decision pending: docs/licensing.md)", "License" in lic, lic)
+    check("license metadata: License-Expression Apache-2.0", "\nLicense-Expression: Apache-2.0\n" in meta)
+    lic_files = [n for n in wm if ".dist-info/licenses/" in n]
+    check(
+        "wheel ships LICENSE and NOTICE",
+        {n.rsplit("/", 1)[-1] for n in lic_files} >= {"LICENSE", "NOTICE"},
+        ", ".join(lic_files),
+    )
 
     for art in arts:
         mem = members(art)
@@ -130,6 +136,8 @@ def main() -> int:
     missing = [n for n in need if n not in wm]
     check("wheel contains skills, templates, registry, notices", not missing, ", ".join(missing))
     check("sdist builds the same version", f"-{version}.tar.gz" in sdist.name, sdist.name)
+    sdist_root = {n.split("/", 1)[1] for n in members(sdist) if "/" in n}
+    check("sdist ships LICENSE and NOTICE", {"LICENSE", "NOTICE"} <= sdist_root)
 
     with tempfile.TemporaryDirectory() as tmp:
         venv = Path(tmp) / "venv"

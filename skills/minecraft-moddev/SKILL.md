@@ -1,7 +1,7 @@
 ---
 name: minecraft-moddev
 description: Scaffold, modify and build Minecraft Java mods for Fabric, NeoForge or Forge with version-correct Gradle toolchains via the `mcat` CLI, add blocks/items/registrations, and diagnose compiler or Gradle failures. Use when the user wants to start a mod project, add content to a mod, port mod code between loaders, or fix a broken mod build.
-license: Proprietary (internal)
+license: Apache-2.0
 compatibility: Requires the `mcat` CLI, a JDK matching the target game (e.g. Java 25 for Minecraft 26.x) and Gradle; builds download official loader toolchains from their Maven repositories.
 metadata:
   toolkit: minecraft-agent-toolkit

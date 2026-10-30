@@ -18,8 +18,8 @@ verified that it did not run.
 > A skill makes the agent follow a careful workflow. It does **not** guarantee that AI-written code,
 > configs or migrations are correct. Review changes, and trust only what MCAT reports as verified.
 
-Status: **1.0.0 release candidate, internal.** Not published to PyPI or any skill directory. The
-license is undecided ([docs/licensing.md](docs/licensing.md)).
+Status: **1.0.0 release candidate.** Not published to PyPI or any skill directory. Licensed under
+[Apache-2.0](LICENSE); template attribution is in [templates/THIRD_PARTY_NOTICES.md](templates/THIRD_PARTY_NOTICES.md).
 
 ## Feature matrix
 

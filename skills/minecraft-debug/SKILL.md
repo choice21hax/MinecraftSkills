@@ -1,7 +1,7 @@
 ---
 name: minecraft-debug
 description: Diagnose Minecraft crash reports, latest.log/debug.log files and modpack launch failures - missing or wrong-version dependencies, wrong loader, mixin failures, Java version mismatches, duplicate mods, out-of-memory and more - using the `mcat debug` analyzer, then propose and (with permission) apply minimal fixes and revalidate. Use when Minecraft or a modded server crashes, fails to start, or the user shares a crash report or log.
-license: Proprietary (internal)
+license: Apache-2.0
 compatibility: Requires the `mcat` CLI (Minecraft Agent Toolkit) on PATH. Works offline.
 metadata:
   toolkit: minecraft-agent-toolkit

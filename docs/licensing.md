@@ -1,9 +1,13 @@
 # Licensing and repository status
 
-Status (2026-10-30): **unresolved, awaiting the owner's decision.** Nothing in this document has been
-applied. No license file was added, no notice removed, visibility unchanged, nothing published.
+Status (2026-10-30): **resolved by the owner: Apache-2.0, repository stays public.** Applied in
+1.0.0rc2: `LICENSE` (canonical text from apache.org), `NOTICE`, `pyproject.toml`
+`license = "Apache-2.0"` with `license-files`, skill frontmatter `license: Apache-2.0`. Nothing was
+published to PyPI or skill directories.
 
-## The inconsistency
+The template caveat below still applies: the Forge-derived templates keep their upstream terms.
+
+## The inconsistency (before the decision)
 
 | Fact | Evidence |
 | --- | --- |

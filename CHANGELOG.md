@@ -2,6 +2,14 @@
 
 Versions follow semver; nothing is published to a registry. See docs/verification.md for evidence.
 
+## 1.0.0rc2 (2026-10-30, release candidate, not published)
+
+- Licensed under **Apache-2.0** (owner's decision; repository stays public): `LICENSE`, `NOTICE`,
+  `license = "Apache-2.0"` + `license-files` in `pyproject.toml` (PEP 639), skill frontmatter.
+  Template code keeps its upstream terms (`templates/THIRD_PARTY_NOTICES.md`).
+- `scripts/release_check.py` now requires `License-Expression: Apache-2.0` and both license files in
+  the wheel and sdist.
+
 ## 1.0.0rc1 (2026-10-30, release candidate, not published)
 
 - `mcat doctor` rebuilt (`mcat/doctor.py`): Python, every JDK found (PATH, JAVA_HOME, JVM dirs) and which

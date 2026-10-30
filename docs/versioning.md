@@ -19,7 +19,8 @@ versioned separately and only change when their format does.
 | 0.2.0 | hardening, CI, CurseForge, cross-provider identity | done (internal) |
 | 0.3.0 | runtime verification | done (internal) |
 | 0.4.0 | version-aware templates, compatibility registry, real migration | done (internal) |
-| 1.0.0rc1 | distribution and release engineering | candidate, see below |
+| 1.0.0rc1 | distribution and release engineering | candidate (superseded) |
+| 1.0.0rc2 | Apache-2.0 license applied | candidate, see below |
 | 1.0.0 | stable supported release | needs the criteria below |
 
 ## What 1.0.0 requires
@@ -28,7 +29,8 @@ versioned separately and only change when their format does.
 1. the release-validation workflow passing **on GitHub** (not only replayed locally);
 2. every supported combination in `mcat mod matrix` re-verified within the release cycle;
 3. at least one real-world migration taken to a running server, with its decisions made by a user;
-4. a licensing decision (docs/licensing.md) and agreement on how it is distributed;
+4. a licensing decision (docs/licensing.md) and agreement on how it is distributed (license done:
+   Apache-2.0; distribution channel still open);
 5. documentation that matches observed behaviour, with experimental features labelled.
 
 Until then, versions are release candidates (`1.0.0rcN`).

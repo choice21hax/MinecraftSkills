@@ -1,9 +1,9 @@
 # Contributing to MCAT
 
-MCAT is currently developed privately by its owner and invited collaborators. The repository is
-visible, but **no license has been granted and outside contributions are not being accepted** until
-the licensing decision in [docs/licensing.md](docs/licensing.md) is made. This guide is for invited
-collaborators.
+MCAT is licensed under [Apache-2.0](LICENSE): you may use, modify and redistribute it under those
+terms. Development is currently done by its owner and invited collaborators, and **unsolicited pull
+requests are not being accepted yet**; open an issue first. Any contribution that is accepted is
+licensed under Apache-2.0 (section 5 of the license). This guide is for collaborators.
 
 ## Setup
 

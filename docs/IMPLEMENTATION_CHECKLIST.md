@@ -85,11 +85,11 @@ v0.4 versions + real migration -> v1.0 distribution. Evidence for every [x] is i
 - [x] Performance: bounded concurrent prefetch + batch lookups; per-phase timings in plans
 - [ ] NeoForge 1.20.1 and Quilt templates (listed as not verified)
 
-## v1.0: distribution (state: 1.0.0rc1, release candidate)
+## v1.0: distribution (state: 1.0.0rc2, release candidate)
 - [x] Licensing recommendation + third-party audit (`docs/licensing.md`); template notices shipped and
       copied into generated projects
-- [!] License choice and repository visibility: awaiting the owner (repo is public, metadata says
-      "Proprietary - internal use only"; nothing was changed)
+- [x] License choice and repository visibility: owner chose Apache-2.0 and a public repository
+      (1.0.0rc2: LICENSE, NOTICE, PEP 639 metadata, skill frontmatter)
 - [x] Reproducible wheel + sdist (pinned hatchling, `SOURCE_DATE_EPOCH`, byte-identical double build),
       SHA256SUMS, skills/templates/registry as package data, `uv.lock`
 - [x] Install from wheel, local path and `git+` URL (local `git+file://` tested; the GitHub URL needs

@@ -1,0 +1,8 @@
+Minecraft Agent Toolkit (MCAT)
+Copyright 2026 choice21hax and MCAT contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The mod-project templates under templates/ are derived from upstream example projects that keep
+their own terms (Fabric example mod: CC0-1.0; NeoForged MDK: MIT; MinecraftForge MDK). See
+templates/THIRD_PARTY_NOTICES.md, which is also copied into every generated project.
